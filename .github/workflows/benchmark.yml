@@ -1,0 +1,45 @@
+name: Benchmark Regression Check
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install benchstat
+        run: go install golang.org/x/perf/cmd/benchstat@latest
+
+      - name: Run benchmarks
+        run: go test -run='^$' -bench=. -benchmem -count=1 -benchtime=100ms ./... 2>/dev/null | grep -E '^(goos:|goarch:|pkg:|cpu:|Benchmark|PASS|ok)' > bench_current.txt
+
+      - name: Compare against baseline
+        run: |
+          echo "## Benchmark Comparison" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          benchstat bench_baseline.txt bench_current.txt | tee bench_diff.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Check for regressions
+        run: |
+          # Fail if any benchmark regressed >10% in ns/op or gained allocs/op.
+          # benchstat exits 0 regardless, so we parse the output.
+          if grep -E '\+[1-9][0-9]\.[0-9]+%' bench_diff.txt | grep -q 'sec/op'; then
+            echo "::error::Performance regression detected (>10% slower in sec/op)"
+            cat bench_diff.txt
+            exit 1
+          fi
+          # Check for any increase in allocs/op for hot-path benchmarks.
+          if grep -E '(BenchmarkDraw_|BenchmarkTransform_|BenchmarkCommandSort)' bench_diff.txt | grep -qE '\+[0-9]+\.[0-9]+% .* allocs/op'; then
+            echo "::error::Hot-path allocation regression detected"
+            cat bench_diff.txt
+            exit 1
+          fi
+          echo "No significant regressions detected."

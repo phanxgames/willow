@@ -1,0 +1,312 @@
+package willow
+
+import (
+	"math"
+
+	"github.com/hajimehoshi/ebiten/v2"
+)
+
+// --- Render texture pool ---
+
+// renderTexturePool manages reusable offscreen ebiten.Images keyed by
+// power-of-two dimensions. After warmup, Acquire/Release are zero-alloc.
+type renderTexturePool struct {
+	buckets map[uint64][]*ebiten.Image
+}
+
+// poolKey packs power-of-two width and height into a single uint64.
+func poolKey(w, h int) uint64 {
+	return uint64(w)<<32 | uint64(h)
+}
+
+// Acquire returns a cleared offscreen image with at least (w, h) pixels.
+// Dimensions are rounded up to the next power of two.
+func (p *renderTexturePool) Acquire(w, h int) *ebiten.Image {
+	pw := nextPowerOfTwo(w)
+	ph := nextPowerOfTwo(h)
+	key := poolKey(pw, ph)
+
+	if p.buckets != nil {
+		if stack := p.buckets[key]; len(stack) > 0 {
+			img := stack[len(stack)-1]
+			p.buckets[key] = stack[:len(stack)-1]
+			img.Clear()
+			return img
+		}
+	}
+
+	return ebiten.NewImage(pw, ph)
+}
+
+// Release returns an image to the pool for reuse. The image is cleared on
+// next Acquire, not here (avoids redundant GPU work if released then
+// immediately re-acquired).
+func (p *renderTexturePool) Release(img *ebiten.Image) {
+	if img == nil {
+		return
+	}
+	b := img.Bounds()
+	key := poolKey(b.Dx(), b.Dy())
+
+	if p.buckets == nil {
+		p.buckets = make(map[uint64][]*ebiten.Image)
+	}
+	p.buckets[key] = append(p.buckets[key], img)
+}
+
+// nextPowerOfTwo returns the smallest power of two >= n (minimum 1).
+func nextPowerOfTwo(n int) int {
+	if n <= 1 {
+		return 1
+	}
+	// Use float64 log2 then ceil, convert back.
+	return 1 << int(math.Ceil(math.Log2(float64(n))))
+}
+
+// --- CacheAsTexture API ---
+
+// SetCacheAsTexture enables or disables caching of this node's subtree as a
+// single texture. When enabled, the subtree is rendered to an offscreen image
+// and reused across frames until InvalidateCache is called.
+func (n *Node) SetCacheAsTexture(enabled bool) {
+	if n.cacheEnabled == enabled {
+		return
+	}
+	n.cacheEnabled = enabled
+	if !enabled {
+		if n.cacheTexture != nil {
+			n.cacheTexture.Deallocate()
+			n.cacheTexture = nil
+		}
+		n.cacheDirty = false
+	} else {
+		n.cacheDirty = true
+	}
+}
+
+// InvalidateCache marks the cached texture as dirty so it will be re-rendered
+// on the next frame. No-op if caching is not enabled.
+func (n *Node) InvalidateCache() {
+	if n.cacheEnabled {
+		n.cacheDirty = true
+	}
+}
+
+// IsCacheEnabled reports whether subtree caching is enabled for this node.
+func (n *Node) IsCacheEnabled() bool {
+	return n.cacheEnabled
+}
+
+// ToTexture renders this node's subtree to a new offscreen image and returns it.
+// The caller owns the returned image (it is NOT pooled). Requires a Scene
+// reference to use the render pipeline.
+func (n *Node) ToTexture(s *Scene) *ebiten.Image {
+	bounds := subtreeBounds(n)
+	w := int(math.Ceil(bounds.Width))
+	h := int(math.Ceil(bounds.Height))
+	if w <= 0 || h <= 0 {
+		return ebiten.NewImage(1, 1)
+	}
+	img := ebiten.NewImage(w, h)
+	renderSubtree(s, n, img, bounds)
+	return img
+}
+
+// --- Subtree bounds ---
+
+// subtreeBounds computes the bounding rectangle of a node and all its
+// descendants in the node's local coordinate space.
+func subtreeBounds(n *Node) Rect {
+	var r Rect
+	first := true
+	subtreeBoundsWalk(n, identityTransform, &r, &first)
+	return r
+}
+
+// subtreeBoundsWalk recursively accumulates bounds.
+func subtreeBoundsWalk(n *Node, localTransform [6]float64, bounds *Rect, first *bool) {
+	var aabb Rect
+	var hasAABB bool
+
+	if n.Type == NodeTypeMesh {
+		aabb = meshWorldAABB(n, localTransform)
+		hasAABB = aabb.Width > 0 || aabb.Height > 0
+	} else {
+		w, h := nodeDimensions(n)
+		if w > 0 && h > 0 {
+			aabb = worldAABB(localTransform, w, h)
+			hasAABB = true
+		}
+	}
+
+	if hasAABB {
+		if *first {
+			*bounds = aabb
+			*first = false
+		} else {
+			*bounds = rectUnion(*bounds, aabb)
+		}
+	}
+
+	for _, child := range n.children {
+		childLocal := computeLocalTransform(child)
+		childTransform := multiplyAffine(localTransform, childLocal)
+		subtreeBoundsWalk(child, childTransform, bounds, first)
+	}
+}
+
+// rectUnion returns the smallest Rect containing both a and b.
+func rectUnion(a, b Rect) Rect {
+	minX := math.Min(a.X, b.X)
+	minY := math.Min(a.Y, b.Y)
+	maxX := math.Max(a.X+a.Width, b.X+b.Width)
+	maxY := math.Max(a.Y+a.Height, b.Y+b.Height)
+	return Rect{X: minX, Y: minY, Width: maxX - minX, Height: maxY - minY}
+}
+
+// --- Subtree rendering ---
+
+// renderSubtree renders a node and its children to the given target image.
+// It temporarily swaps the scene's command buffer to avoid disturbing the
+// main render pass. The node's content is rendered at local-space origin,
+// offset by -bounds.X, -bounds.Y so everything fits in the target.
+func renderSubtree(s *Scene, n *Node, target *ebiten.Image, bounds Rect) {
+	// Save main command buffer.
+	savedCmds := s.commands
+	s.commands = s.offscreenCmds[:0]
+
+	// Build an offset transform so the subtree content starts at (0,0) in the target.
+	offsetTransform := [6]float64{1, 0, 0, 1, -bounds.X, -bounds.Y}
+
+	treeOrder := 0
+
+	// Emit the node itself if renderable.
+	// Use alpha=1.0 as the base; worldAlpha is applied once by the final
+	// composite command in renderSpecialNode (avoids double-application).
+	emitNodeCommand(s, n, offsetTransform, 1.0, &treeOrder)
+
+	// Traverse children using ZIndex-sorted order when available.
+	children := n.children
+	if !n.childrenSorted {
+		s.rebuildSortedChildren(n)
+	}
+	if n.sortedChildren != nil {
+		children = n.sortedChildren
+	}
+	for _, child := range children {
+		childLocal := computeLocalTransform(child)
+		childTransform := multiplyAffine(offsetTransform, childLocal)
+		childAlpha := child.Alpha
+		renderSubtreeWalk(s, child, childTransform, childAlpha, &treeOrder)
+	}
+
+	// Sort and submit to offscreen target.
+	s.mergeSort()
+	s.submitBatches(target)
+
+	// Restore. Keep offscreenCmds at high-water capacity.
+	s.offscreenCmds = s.commands[:0]
+	s.commands = savedCmds
+}
+
+// renderSubtreeWalk traverses a node subtree, emitting commands into the
+// current s.commands buffer. Similar to traverse() but uses explicit
+// transforms rather than world transforms.
+func renderSubtreeWalk(s *Scene, n *Node, parentTransform [6]float64, parentAlpha float64, treeOrder *int) {
+	if !n.Visible {
+		return
+	}
+
+	local := computeLocalTransform(n)
+	transform := multiplyAffine(parentTransform, local)
+	alpha := parentAlpha * n.Alpha
+
+	emitNodeCommand(s, n, transform, alpha, treeOrder)
+
+	// Use ZIndex-sorted children order, consistent with main traverse.
+	children := n.children
+	if !n.childrenSorted {
+		s.rebuildSortedChildren(n)
+	}
+	if n.sortedChildren != nil {
+		children = n.sortedChildren
+	}
+	for _, child := range children {
+		renderSubtreeWalk(s, child, transform, alpha, treeOrder)
+	}
+}
+
+// emitNodeCommand emits a render command for a single node at the given transform.
+func emitNodeCommand(s *Scene, n *Node, transform [6]float64, alpha float64, treeOrder *int) {
+	if !n.Renderable {
+		return
+	}
+	switch n.Type {
+	case NodeTypeSprite:
+		*treeOrder++
+		cmd := RenderCommand{
+			Type:        CommandSprite,
+			Transform:   transform,
+			Color:       Color{n.Color.R, n.Color.G, n.Color.B, n.Color.A * alpha},
+			BlendMode:   n.BlendMode,
+			RenderLayer: n.RenderLayer,
+			GlobalOrder: n.GlobalOrder,
+			treeOrder:   *treeOrder,
+		}
+		if n.customImage != nil {
+			cmd.directImage = n.customImage
+		} else {
+			cmd.TextureRegion = n.TextureRegion
+		}
+		s.commands = append(s.commands, cmd)
+	case NodeTypeMesh:
+		if len(n.Vertices) == 0 || len(n.Indices) == 0 {
+			return
+		}
+		tintColor := Color{n.Color.R, n.Color.G, n.Color.B, n.Color.A * alpha}
+		dst := ensureTransformedVerts(n)
+		transformVertices(n.Vertices, dst, transform, tintColor)
+		*treeOrder++
+		s.commands = append(s.commands, RenderCommand{
+			Type:        CommandMesh,
+			Transform:   transform,
+			BlendMode:   n.BlendMode,
+			RenderLayer: n.RenderLayer,
+			GlobalOrder: n.GlobalOrder,
+			treeOrder:   *treeOrder,
+			meshVerts:   dst,
+			meshInds:    n.Indices,
+			meshImage:   n.MeshImage,
+		})
+	case NodeTypeParticleEmitter:
+		if n.Emitter != nil && n.Emitter.alive > 0 {
+			*treeOrder++
+			particleTransform := transform
+			ws := n.Emitter.config.WorldSpace
+			if ws {
+				particleTransform = s.viewTransform
+			}
+			s.commands = append(s.commands, RenderCommand{
+				Type:               CommandParticle,
+				Transform:          particleTransform,
+				TextureRegion:      n.TextureRegion,
+				Color:              Color{n.Color.R, n.Color.G, n.Color.B, n.Color.A * alpha},
+				BlendMode:          n.BlendMode,
+				RenderLayer:        n.RenderLayer,
+				GlobalOrder:        n.GlobalOrder,
+				treeOrder:          *treeOrder,
+				emitter:            n.Emitter,
+				worldSpaceParticle: ws,
+			})
+		}
+	case NodeTypeText:
+		if n.TextBlock != nil && n.TextBlock.Font != nil {
+			switch n.TextBlock.Font.(type) {
+			case *BitmapFont:
+				s.commands = emitBitmapTextCommands(n.TextBlock, n, s.commands, treeOrder)
+			case *TTFFont:
+				s.commands, s.pages = emitTTFTextCommand(n.TextBlock, n, s.commands, treeOrder, s.pages, &s.nextPage)
+			}
+		}
+	}
+}
