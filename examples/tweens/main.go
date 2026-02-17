@@ -39,7 +39,7 @@ type demo struct {
 }
 
 func main() {
-	f, err := os.Open("examples/tileset.png")
+	f, err := os.Open("examples/_assets/tileset.png")
 	if err != nil {
 		log.Fatalf("failed to open tileset: %v", err)
 	}

@@ -4,7 +4,6 @@
 package main
 
 import (
-	"fmt"
 	"image"
 	"log"
 	"math"
@@ -17,34 +16,39 @@ import (
 )
 
 const (
-	screenW  = 640
-	screenH  = 480
-	tileSize = 32
-	panelTW  = 6 // tiles wide per panel
-	panelTH  = 4 // tiles tall per panel
-	gridCols = 3
-	gridRows = 3
-	gridGap  = 10
+	windowTitle = "Willow — Shader Showcase"
+	showFPS     = true
+	screenW     = 640
+	screenH     = 480
+	tileSize    = 32
+	panelTW     = 6 // tiles wide per panel
+	panelTH     = 4 // tiles tall per panel
+	gridCols    = 3
+	gridRows    = 3
+	gridGap     = 10
 )
 
 // shaderPanel holds one grid cell: a Willow sprite with a filter and its animation.
 type shaderPanel struct {
-	node    *willow.Node
-	name    string
-	screenX float64
-	screenY float64
-	update  func(t float64)
+	node   *willow.Node
+	update func(t float64)
 }
 
-// Game implements ebiten.Game.
-type Game struct {
-	scene  *willow.Scene
+type animator struct {
 	panels []*shaderPanel
 	time   float64
 }
 
+func (a *animator) update() error {
+	a.time += 1.0 / float64(ebiten.TPS())
+	for _, p := range a.panels {
+		p.update(a.time)
+	}
+	return nil
+}
+
 func main() {
-	f, err := os.Open("examples/tileset.png")
+	f, err := os.Open("examples/_assets/tileset.png")
 	if err != nil {
 		log.Fatalf("open tileset: %v", err)
 	}
@@ -74,11 +78,6 @@ func main() {
 	hueShift := willow.NewColorMatrixFilter()
 	warmCool := willow.NewColorMatrixFilter()
 	blur := willow.NewBlurFilter(0)
-	// outline := willow.NewOutlineFilter(2, willow.Color{R: 1, G: 0.85, B: 0.2, A: 1})
-	// ppOutline := willow.NewPixelPerfectOutlineFilter(willow.Color{R: 0.3, G: 1, B: 0.5, A: 1})
-	// ppInline := willow.NewPixelPerfectInlineFilter(willow.Color{R: 1, G: 0.2, B: 0.4, A: 1})
-	// firePalette := willow.NewPaletteFilter()
-	// icePalette := willow.NewPaletteFilter()
 
 	// Define the 9 shader demos.
 	type panelDef struct {
@@ -188,21 +187,41 @@ func main() {
 		scene.Root().AddChild(sprite)
 
 		panels[i] = &shaderPanel{
-			node:    sprite,
-			name:    def.name,
-			screenX: x,
-			screenY: y,
-			update:  def.update,
+			node:   sprite,
+			update: def.update,
 		}
+
+		// Pre-render the label text into a sprite and overlay it on the panel.
+		label := makeLabel(def.name)
+		label.X = x + 4
+		label.Y = y + 2
+		scene.Root().AddChild(label)
 	}
 
-	g := &Game{scene: scene, panels: panels}
+	a := &animator{panels: panels}
+	scene.SetUpdateFunc(a.update)
 
-	ebiten.SetWindowTitle("Willow \u2014 Shader Showcase")
-	ebiten.SetWindowSize(screenW, screenH)
-	if err := ebiten.RunGame(g); err != nil {
+	if err := willow.Run(scene, willow.RunConfig{
+		Title:   windowTitle,
+		Width:   screenW,
+		Height:  screenH,
+		ShowFPS: showFPS,
+	}); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// makeLabel pre-renders a text string into a sprite using Ebitengine's debug font.
+func makeLabel(s string) *willow.Node {
+	// Debug font is roughly 6px wide, 16px tall per character.
+	w := len(s)*6 + 2
+	h := 16
+	img := ebiten.NewImage(w, h)
+	ebitenutil.DebugPrint(img, s)
+
+	n := willow.NewSprite("label-"+s, willow.TextureRegion{})
+	n.SetCustomImage(img)
+	return n
 }
 
 // renderTilePanel composites random tiles into a single seamless image.
@@ -227,54 +246,4 @@ func renderTilePanel(tileset *ebiten.Image, cols, rows int) *ebiten.Image {
 		}
 	}
 	return panel
-}
-
-func (g *Game) Update() error {
-	g.time += 1.0 / float64(ebiten.TPS())
-	for _, p := range g.panels {
-		p.update(g.time)
-	}
-	g.scene.Update()
-	return nil
-}
-
-func (g *Game) Draw(screen *ebiten.Image) {
-	g.scene.Draw(screen)
-
-	// Label each panel.
-	for _, p := range g.panels {
-		ebitenutil.DebugPrintAt(screen, p.name, int(p.screenX)+4, int(p.screenY)+2)
-	}
-	// FPS / TPS counter.
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("FPS: %.0f  TPS: %.0f",
-		ebiten.ActualFPS(), ebiten.ActualTPS()), 4, 4)
-}
-
-func (g *Game) Layout(_, _ int) (int, int) {
-	return screenW, screenH
-}
-
-// hsvToRGB converts HSV (all [0,1]) to RGB.
-func hsvToRGB(h, s, v float64) (r, g, b float64) {
-	h -= math.Floor(h)
-	i := int(h * 6)
-	f := h*6 - float64(i)
-	p := v * (1 - s)
-	q := v * (1 - s*f)
-	t := v * (1 - s*(1-f))
-	switch i % 6 {
-	case 0:
-		return v, t, p
-	case 1:
-		return q, v, p
-	case 2:
-		return p, v, t
-	case 3:
-		return p, q, v
-	case 4:
-		return t, p, v
-	case 5:
-		return v, p, q
-	}
-	return 0, 0, 0
 }
