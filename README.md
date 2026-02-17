@@ -6,6 +6,13 @@
 
 A retained-mode 2D scene graph, interaction layer, and render compiler for [Ebitengine](https://ebitengine.org).
 
+<p align="center">
+  <img src="docs/demos/shapes.gif" alt="Shapes demo" width="400">
+  <img src="docs/demos/tweens.gif" alt="Tweens demo" width="400">
+  <img src="docs/demos/shaders.gif" alt="Shaders demo" width="400">
+  <img src="docs/demos/tilemap.gif" alt="Tilemap demo" width="400">
+</p>
+
 > **New here?** Check out the [examples](examples/) — runnable demos with no external assets required.
 
 ---

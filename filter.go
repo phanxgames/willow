@@ -92,6 +92,7 @@ package main
 
 var PaletteSize float
 var CycleOffset float
+var TexWidth float
 
 func Fragment(dst vec4, src vec2, color vec4) vec4 {
 	c := imageSrc0At(src)
@@ -107,8 +108,9 @@ func Fragment(dst vec4, src vec2, color vec4) vec4 {
 	// Map to palette index with cycle offset.
 	idx := lum*PaletteSize + CycleOffset
 	idx = mod(idx, PaletteSize)
-	// Look up in palette texture (imageSrc1, 256x1).
-	pal := imageSrc1At(vec2(idx + 0.5, 0.5))
+	// Look up in palette texture (scaled to match source dimensions).
+	u := (idx + 0.5) / PaletteSize * TexWidth
+	pal := imageSrc1At(vec2(u, 0.5))
 	// Re-premultiply with original alpha.
 	return vec4(pal.rgb*c.a, c.a)
 }
@@ -491,18 +493,19 @@ type PaletteFilter struct {
 	CycleOffset  float64
 	paletteTex   *ebiten.Image
 	paletteDirty bool
+	texW, texH   int // current palette texture dimensions
 	uniforms     map[string]any
 	shaderOp     ebiten.DrawRectShaderOptions
-	pixBuf       [256 * 4]byte // preallocated pixel buffer for palette texture
+	pixBuf       []byte // grows to match source dimensions
 }
 
 // NewPaletteFilter creates a palette filter with a default grayscale palette.
 func NewPaletteFilter() *PaletteFilter {
 	f := &PaletteFilter{
 		paletteDirty: true,
-		uniforms:     make(map[string]any, 2),
+		uniforms:     make(map[string]any, 3),
 	}
-	// Pre-store the constant PaletteSize; CycleOffset is set each Apply.
+	// Pre-store the constant PaletteSize; CycleOffset and TexWidth set each Apply.
 	// Scalar float32 boxing is unavoidable with Ebitengine's uniform API.
 	f.uniforms["PaletteSize"] = float32(256)
 	// Initialize with a grayscale palette.
@@ -519,38 +522,62 @@ func (f *PaletteFilter) SetPalette(palette [256]Color) {
 	f.paletteDirty = true
 }
 
-func (f *PaletteFilter) ensurePaletteTex() {
-	if !f.paletteDirty && f.paletteTex != nil {
+// ensurePaletteTex rebuilds the palette texture to match the given dimensions.
+// DrawRectShader requires all source images to have the same size, so the
+// palette data is scaled across the full texture width.
+func (f *PaletteFilter) ensurePaletteTex(w, h int) {
+	sizeChanged := f.texW != w || f.texH != h
+	if !f.paletteDirty && !sizeChanged && f.paletteTex != nil {
 		return
 	}
-	if f.paletteTex == nil {
-		f.paletteTex = ebiten.NewImage(256, 1)
+	if f.paletteTex == nil || sizeChanged {
+		if f.paletteTex != nil {
+			f.paletteTex.Deallocate()
+		}
+		f.paletteTex = ebiten.NewImage(w, h)
+		f.texW = w
+		f.texH = h
 	}
-	// Write palette colors as RGBA pixels (into preallocated buffer).
-	for i := 0; i < 256; i++ {
-		c := f.Palette[i]
-		// Premultiply for storage.
-		f.pixBuf[i*4+0] = byte(c.R * c.A * 255)
-		f.pixBuf[i*4+1] = byte(c.G * c.A * 255)
-		f.pixBuf[i*4+2] = byte(c.B * c.A * 255)
-		f.pixBuf[i*4+3] = byte(c.A * 255)
+	// Grow pixel buffer as needed.
+	needed := w * h * 4
+	if cap(f.pixBuf) < needed {
+		f.pixBuf = make([]byte, needed)
+	} else {
+		f.pixBuf = f.pixBuf[:needed]
 	}
-	f.paletteTex.WritePixels(f.pixBuf[:])
+	// Write palette data: 256 entries scaled across w pixels, repeated per row.
+	for row := 0; row < h; row++ {
+		for x := 0; x < w; x++ {
+			idx := int((float64(x) + 0.5) * 256.0 / float64(w))
+			if idx > 255 {
+				idx = 255
+			}
+			c := f.Palette[idx]
+			off := (row*w + x) * 4
+			f.pixBuf[off+0] = byte(c.R * c.A * 255)
+			f.pixBuf[off+1] = byte(c.G * c.A * 255)
+			f.pixBuf[off+2] = byte(c.B * c.A * 255)
+			f.pixBuf[off+3] = byte(c.A * 255)
+		}
+	}
+	f.paletteTex.WritePixels(f.pixBuf)
 	f.paletteDirty = false
 }
 
 // Apply remaps pixel colors through the palette based on luminance.
 func (f *PaletteFilter) Apply(src, dst *ebiten.Image) {
 	shader := ensurePaletteShader()
-	f.ensurePaletteTex()
+	bounds := src.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	f.ensurePaletteTex(w, h)
 	// Scalar float32 boxing is unavoidable with Ebitengine's uniform API,
 	// but this only runs for nodes with PaletteFilter active.
 	f.uniforms["CycleOffset"] = float32(f.CycleOffset)
-	bounds := src.Bounds()
+	f.uniforms["TexWidth"] = float32(w)
 	f.shaderOp.Images[0] = src
 	f.shaderOp.Images[1] = f.paletteTex
 	f.shaderOp.Uniforms = f.uniforms
-	dst.DrawRectShader(bounds.Dx(), bounds.Dy(), shader, &f.shaderOp)
+	dst.DrawRectShader(w, h, shader, &f.shaderOp)
 }
 
 // Padding returns 0; palette remapping doesn't expand the image bounds.
