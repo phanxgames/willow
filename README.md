@@ -50,7 +50,7 @@ Inspired by [Starling](https://gamua.com/starling/), Flash display lists, and [P
 1. **Structure without handcuffs.** Willow provides hierarchy, transforms, and batching. It does not impose game architecture. Any genre, any pattern, any scale.
 2. **Transparent, not magical.** No hidden state, no implicit systems, no reflection in hot paths. You can always see what Willow is doing and why.
 3. **Performance as a contract.** Zero heap allocations per frame on the hot path. 10,000 sprites at 120+ FPS on desktop, 60+ FPS on mobile and web. Verified with compiler escape analysis and benchmark suites.
-4. **Wrap Ebitengine, never fight it.** Willow uses Ebitengine's draw calls, image types, and threading model directly. No abstraction layer that hides what's happening underneath.
+4. **Wrap Ebitengine, never fight it.** Willow uses Ebitengine's draw calls, image types, and threading model directly.
 5. **No genre bias.** Willow is for any 2D project - games, tools, visualizations, simulations.
 6. **Minimal public API.** Every exported symbol earns its place. Fewer concepts, less to learn, less to break.
 
@@ -66,24 +66,29 @@ go get github.com/phanxgames/willow@latest
 package main
 
 import (
-	"github.com/hajimehoshi/ebiten/v2"
+	"log"
+
 	"github.com/phanxgames/willow"
 )
-
-type Game struct{ scene *willow.Scene }
-
-func (g *Game) Update() error { g.scene.Update(); return nil }
-func (g *Game) Draw(screen *ebiten.Image) { g.scene.Draw(screen) }
-func (g *Game) Layout(w, h int) (int, int) { return w, h }
 
 func main() {
 	scene := willow.NewScene()
 
-	sprite := willow.NewSprite("hero", myAtlas.Region("hero_idle"))
-	sprite.X, sprite.Y = 400, 300
+	sprite := willow.NewSprite("hero", willow.TextureRegion{})
+	sprite.ScaleX = 40
+	sprite.ScaleY = 40
+	sprite.Color = willow.Color{R: 0.3, G: 0.7, B: 1, A: 1}
+	sprite.X = 300
+	sprite.Y = 220
 	scene.Root().AddChild(sprite)
 
-	ebiten.RunGame(&Game{scene: scene})
+	if err := willow.Run(scene, willow.RunConfig{
+		Title:  "My Game",
+		Width:  640,
+		Height: 480,
+	}); err != nil {
+		log.Fatal(err)
+	}
 }
 ```
 
@@ -91,14 +96,23 @@ func main() {
 
 ## Examples
 
-Runnable examples are included — no external assets needed:
+Runnable examples are included in the [examples/](examples/) directory:
 
 ```bash
 go run ./examples/basic        # Bouncing colored sprite
 go run ./examples/shapes       # Rotating polygon hierarchy with parent/child transforms
-go run ./examples/interaction  # Draggable, clickable rectangles
-go run ./examples/tilemap      # Tile map rendering with camera controls
+go run ./examples/interaction  # Draggable, clickable rectangles with color toggle
+go run ./examples/tweens       # Position, scale, rotation, alpha, and color tweens
+go run ./examples/shaders      # 3x3 grid showcasing all built-in shader filters
+go run ./examples/outline      # Outline and inline filters on a sprite
+go run ./examples/tilemap      # Tile map rendering with camera panning
 ```
+
+---
+
+## Documentation
+
+Full API documentation is available on [pkg.go.dev](https://pkg.go.dev/github.com/phanxgames/willow).
 
 ---
 
