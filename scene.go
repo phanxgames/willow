@@ -208,6 +208,9 @@ func (s *Scene) Update() {
 	}
 	updateParticles(s.root, float64(dt))
 	updateNodes(s.root, float64(dt))
+	if s.testRunner != nil {
+		s.testRunner.step(s)
+	}
 	s.processInput()
 }
 

@@ -13,3 +13,4 @@ node_modules/
 dist/
 *.test
 bench_baseline.txt
+CLAUDE.md
