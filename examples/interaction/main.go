@@ -59,7 +59,6 @@ func makeBox(name string, primary, alt willow.Color) *willow.Node {
 	node.ScaleY = boxSize
 	node.Color = primary
 	node.Interactable = true
-	node.HitShape = willow.HitRect{Width: boxSize, Height: boxSize}
 
 	// Toggle color on click.
 	current := true
