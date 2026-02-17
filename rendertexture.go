@@ -73,13 +73,20 @@ func (rt *RenderTexture) NewSpriteNode(name string) *Node {
 // RenderTextureDrawOpts controls how an image or sprite is drawn onto a
 // RenderTexture when using the "Colored" draw methods.
 type RenderTextureDrawOpts struct {
-	X, Y           float64
+	// X and Y are the draw position in pixels.
+	X, Y float64
+	// ScaleX and ScaleY are scale factors. Zero defaults to 1.0.
 	ScaleX, ScaleY float64
-	Rotation       float64
+	// Rotation is the rotation in radians (clockwise).
+	Rotation float64
+	// PivotX and PivotY are the transform origin for scale and rotation.
 	PivotX, PivotY float64
-	Color          Color
-	Alpha          float64
-	BlendMode      BlendMode
+	// Color is a multiplicative tint. Zero value defaults to white (no tint).
+	Color Color
+	// Alpha is the opacity multiplier. Zero defaults to 1.0 (fully opaque).
+	Alpha float64
+	// BlendMode selects the compositing operation.
+	BlendMode BlendMode
 }
 
 // DrawSprite draws a TextureRegion from the atlas onto this texture at (x, y).

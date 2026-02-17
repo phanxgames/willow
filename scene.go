@@ -8,31 +8,35 @@ import (
 )
 
 // EntityStore is the interface for optional ECS integration.
-// When set on a Scene, interaction events are forwarded to the ECS.
+// When set on a Scene via SetEntityStore, interaction events on nodes with
+// a non-zero EntityID are forwarded to the ECS.
 type EntityStore interface {
+	// EmitEvent delivers an interaction event to the ECS.
 	EmitEvent(event InteractionEvent)
 }
 
 // InteractionEvent carries interaction data for the ECS bridge.
 type InteractionEvent struct {
-	Type      EventType
-	EntityID  uint32
-	GlobalX   float64
-	GlobalY   float64
-	LocalX    float64
-	LocalY    float64
-	Button    MouseButton
-	Modifiers KeyModifiers
+	Type      EventType    // which kind of interaction occurred
+	EntityID  uint32       // the ECS entity associated with the hit node
+	GlobalX   float64      // pointer X in world coordinates
+	GlobalY   float64      // pointer Y in world coordinates
+	LocalX    float64      // pointer X in the hit node's local coordinates
+	LocalY    float64      // pointer Y in the hit node's local coordinates
+	Button    MouseButton  // which mouse button is involved
+	Modifiers KeyModifiers // keyboard modifier keys held during the event
 	// Drag fields (valid for EventDragStart, EventDrag, EventDragEnd)
-	StartX float64
-	StartY float64
-	DeltaX float64
-	DeltaY float64
+	StartX       float64 // world X where the drag began
+	StartY       float64 // world Y where the drag began
+	DeltaX       float64 // X movement since the previous drag event
+	DeltaY       float64 // Y movement since the previous drag event
+	ScreenDeltaX float64 // X movement in screen pixels since the previous drag event
+	ScreenDeltaY float64 // Y movement in screen pixels since the previous drag event
 	// Pinch fields (valid for EventPinch)
-	Scale      float64
-	ScaleDelta float64
-	Rotation   float64
-	RotDelta   float64
+	Scale      float64 // cumulative scale factor since pinch start
+	ScaleDelta float64 // frame-to-frame scale change
+	Rotation   float64 // cumulative rotation in radians since pinch start
+	RotDelta   float64 // frame-to-frame rotation change in radians
 }
 
 const defaultCommandCap = 1024
@@ -44,14 +48,21 @@ type Scene struct {
 	store EntityStore
 	debug bool
 
+	// ClearColor is the background color used to fill the screen each frame
+	// when the scene is run via [Run]. If left at the zero value (transparent
+	// black), the screen is not filled, resulting in a black background.
+	ClearColor Color
+
+	updateFunc func() error // user callback set via SetUpdateFunc
+
 	// Cameras
 	cameras []*Camera
 
 	// Render state
-	commands  []RenderCommand
-	sortBuf   []RenderCommand
-	pages     []*ebiten.Image
-	nextPage  int // next available page index for LoadAtlas
+	commands      []RenderCommand
+	sortBuf       []RenderCommand
+	pages         []*ebiten.Image
+	nextPage      int        // next available page index for LoadAtlas
 	cullBounds    Rect       // current camera cull bounds (set per-camera during Draw)
 	cullActive    bool       // whether culling is active for the current camera
 	viewTransform [6]float64 // current camera view matrix for world-space particles
@@ -71,6 +82,16 @@ type Scene struct {
 	touchUsed    [maxPointers]bool
 	prevTouchIDs []ebiten.TouchID
 	pinch        pinchState
+
+	// Screenshot capture (debug tool)
+	screenshotQueue []string
+	ScreenshotDir   string
+
+	// Input injection (debug/testing tool)
+	injectQueue []syntheticPointerEvent
+
+	// Test runner (automated visual testing)
+	testRunner *TestRunner
 }
 
 // NewScene creates a new scene with a pre-created root container.
@@ -78,16 +99,100 @@ func NewScene() *Scene {
 	root := NewContainer("root")
 	root.Interactable = true
 	return &Scene{
-		root:         root,
-		commands:     make([]RenderCommand, 0, defaultCommandCap),
-		sortBuf:      make([]RenderCommand, 0, defaultCommandCap),
-		dragDeadZone: defaultDragDeadZone,
+		root:          root,
+		commands:      make([]RenderCommand, 0, defaultCommandCap),
+		sortBuf:       make([]RenderCommand, 0, defaultCommandCap),
+		dragDeadZone:  defaultDragDeadZone,
+		ScreenshotDir: "screenshots",
 	}
 }
 
-// Root returns the scene's root container node.
+// Root returns the scene's root container node. The root node cannot be
+// removed or disposed; it always exists for the lifetime of the Scene.
 func (s *Scene) Root() *Node {
 	return s.root
+}
+
+// RunConfig holds optional configuration for [Run].
+type RunConfig struct {
+	// Title sets the window title. Ignored on platforms without a title bar.
+	Title string
+	// Width and Height set the window size in device-independent pixels.
+	// If zero, defaults to 640x480.
+	Width, Height int
+
+	// ShowFPS enables a small FPS/TPS widget in the top-left corner.
+	ShowFPS bool
+}
+
+// SetUpdateFunc registers a callback that is called once per tick before
+// [Scene.Update] when the scene is run via [Run]. Use it for game-specific
+// logic (movement, spawning, etc.). Pass nil to clear.
+func (s *Scene) SetUpdateFunc(fn func() error) {
+	s.updateFunc = fn
+}
+
+// Run is a convenience entry point that creates an Ebitengine game loop around
+// the given Scene. It configures the window and calls [ebiten.RunGame].
+//
+// For full control over the game loop, skip Run and implement [ebiten.Game]
+// yourself, calling [Scene.Update] and [Scene.Draw] directly.
+func Run(scene *Scene, cfg RunConfig) error {
+	w, h := cfg.Width, cfg.Height
+	if w == 0 {
+		w = 640
+	}
+	if h == 0 {
+		h = 480
+	}
+	ebiten.SetWindowSize(w, h)
+	if cfg.Title != "" {
+		ebiten.SetWindowTitle(cfg.Title)
+	}
+	g := &gameShell{scene: scene, w: w, h: h}
+	if cfg.ShowFPS {
+		g.fpsWid = NewFPSWidget()
+		g.fpsWid.X, g.fpsWid.Y = 8, 8
+	}
+
+	return ebiten.RunGame(g)
+}
+
+// gameShell implements [ebiten.Game] by delegating to a Scene.
+type gameShell struct {
+	scene  *Scene
+	w, h   int
+	fpsWid *Node // screen-space FPS overlay (not in scene graph)
+}
+
+func (g *gameShell) Update() error {
+	if g.scene.updateFunc != nil {
+		if err := g.scene.updateFunc(); err != nil {
+			return err
+		}
+	}
+	g.scene.Update()
+	if g.fpsWid != nil && g.fpsWid.OnUpdate != nil {
+		g.fpsWid.OnUpdate(1.0 / float64(ebiten.TPS()))
+	}
+	return nil
+}
+
+func (g *gameShell) Draw(screen *ebiten.Image) {
+	if g.scene.ClearColor.A > 0 {
+		screen.Fill(g.scene.ClearColor.toRGBA())
+	}
+	g.scene.Draw(screen)
+	// Draw FPS widget in screen space (unaffected by cameras).
+	if g.fpsWid != nil && g.fpsWid.CustomImage() != nil {
+		var op ebiten.DrawImageOptions
+		op.GeoM.Translate(g.fpsWid.X, g.fpsWid.Y)
+		screen.DrawImage(g.fpsWid.CustomImage(), &op)
+	}
+}
+
+func (g *gameShell) Layout(outsideWidth, outsideHeight int) (int, int) {
+	return g.w, g.h
 }
 
 // Update processes input, advances animations, and simulates particles.
@@ -96,13 +201,23 @@ func (s *Scene) Update() {
 
 	// Refresh world transforms first so camera follow targets and hit testing
 	// have accurate positions this frame.
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, true)
 
 	for _, cam := range s.cameras {
 		cam.update(dt)
 	}
 	updateParticles(s.root, float64(dt))
+	updateNodes(s.root, float64(dt))
 	s.processInput()
+}
+
+func updateNodes(n *Node, dt float64) {
+	if n.OnUpdate != nil {
+		n.OnUpdate(dt)
+	}
+	for _, child := range n.children {
+		updateNodes(child, dt)
+	}
 }
 
 // Draw traverses the scene tree, emits render commands, sorts them, and submits
@@ -111,18 +226,19 @@ func (s *Scene) Draw(screen *ebiten.Image) {
 	if len(s.cameras) == 0 {
 		// No explicit cameras: use implicit identity camera, full screen.
 		s.drawWithCamera(screen, nil)
-		return
+	} else {
+		for _, cam := range s.cameras {
+			cam.computeViewMatrix()
+			vp := cam.Viewport
+			viewportImg := screen.SubImage(image.Rect(
+				int(vp.X), int(vp.Y),
+				int(vp.X+vp.Width), int(vp.Y+vp.Height),
+			)).(*ebiten.Image)
+			s.drawWithCamera(viewportImg, cam)
+		}
 	}
 
-	for _, cam := range s.cameras {
-		cam.computeViewMatrix()
-		vp := cam.Viewport
-		viewportImg := screen.SubImage(image.Rect(
-			int(vp.X), int(vp.Y),
-			int(vp.X+vp.Width), int(vp.Y+vp.Height),
-		)).(*ebiten.Image)
-		s.drawWithCamera(viewportImg, cam)
-	}
+	s.flushScreenshots(screen)
 }
 
 // drawWithCamera renders the scene from a camera's perspective.
@@ -153,7 +269,7 @@ func (s *Scene) drawWithCamera(target *ebiten.Image, cam *Camera) {
 	}
 
 	treeOrder := 0
-	s.traverse(s.root, viewTransform, viewAlpha, false, &treeOrder)
+	s.traverse(s.root, viewTransform, viewAlpha, true, &treeOrder)
 
 	if s.debug {
 		stats.traverseTime = time.Since(t0)

@@ -7,11 +7,11 @@ import (
 )
 
 // Filter is the interface for visual effects applied to a node's rendered output.
-// Apply renders src into dst with the filter effect. Padding returns the number
-// of extra pixels needed around the source to accommodate the effect (e.g. blur
-// radius, outline thickness).
 type Filter interface {
+	// Apply renders src into dst with the filter effect.
 	Apply(src, dst *ebiten.Image)
+	// Padding returns the extra pixels needed around the source to accommodate
+	// the effect (e.g. blur radius, outline thickness). Zero means no padding.
 	Padding() int
 }
 
@@ -172,11 +172,11 @@ func ensurePaletteShader() *ebiten.Shader {
 // ColorMatrixFilter applies a 4x5 color matrix transformation using a Kage shader.
 // The matrix is stored in row-major order: [R_r, R_g, R_b, R_a, R_offset, G_r, ...].
 type ColorMatrixFilter struct {
-	Matrix       [20]float64
-	uniforms     map[string]any
-	matrixF32    [20]float32 // persistent buffer to avoid per-frame slice escape
-	matrixSlice  []float32   // persistent slice header pointing into matrixF32
-	shaderOp     ebiten.DrawRectShaderOptions
+	Matrix      [20]float64
+	uniforms    map[string]any
+	matrixF32   [20]float32 // persistent buffer to avoid per-frame slice escape
+	matrixSlice []float32   // persistent slice header pointing into matrixF32
+	shaderOp    ebiten.DrawRectShaderOptions
 }
 
 // NewColorMatrixFilter creates a color matrix filter initialized to the identity.
@@ -228,6 +228,7 @@ func (f *ColorMatrixFilter) SetSaturation(s float64) {
 	}
 }
 
+// Apply renders the color matrix transformation from src into dst.
 func (f *ColorMatrixFilter) Apply(src, dst *ebiten.Image) {
 	shader := ensureColorMatrixShader()
 	// Convert [20]float64 to [20]float32 in-place (no allocation — matrixSlice
@@ -241,6 +242,7 @@ func (f *ColorMatrixFilter) Apply(src, dst *ebiten.Image) {
 	dst.DrawRectShader(bounds.Dx(), bounds.Dy(), shader, &f.shaderOp)
 }
 
+// Padding returns 0; color matrix transforms don't expand the image bounds.
 func (f *ColorMatrixFilter) Padding() int { return 0 }
 
 // --- BlurFilter ---
@@ -261,6 +263,7 @@ func NewBlurFilter(radius int) *BlurFilter {
 	return &BlurFilter{Radius: radius}
 }
 
+// Apply renders a Kawase blur from src into dst using iterative downscale/upscale.
 func (f *BlurFilter) Apply(src, dst *ebiten.Image) {
 	if f.Radius <= 0 {
 		f.imgOp.GeoM.Reset()
@@ -347,6 +350,7 @@ func (f *BlurFilter) Apply(src, dst *ebiten.Image) {
 	dst.DrawImage(current, op)
 }
 
+// Padding returns the blur radius; the offscreen buffer is expanded to avoid clipping.
 func (f *BlurFilter) Padding() int { return f.Radius }
 
 // --- OutlineFilter ---
@@ -364,6 +368,7 @@ func NewOutlineFilter(thickness int, c Color) *OutlineFilter {
 	return &OutlineFilter{Thickness: thickness, Color: c}
 }
 
+// Apply draws an 8-direction offset outline behind the source image.
 func (f *OutlineFilter) Apply(src, dst *ebiten.Image) {
 	// 8-direction offsets scaled by thickness
 	t := float64(f.Thickness)
@@ -394,6 +399,7 @@ func (f *OutlineFilter) Apply(src, dst *ebiten.Image) {
 	dst.DrawImage(src, op)
 }
 
+// Padding returns the outline thickness; the offscreen buffer is expanded by this amount.
 func (f *OutlineFilter) Padding() int { return f.Thickness }
 
 // --- PixelPerfectOutlineFilter ---
@@ -419,6 +425,7 @@ func NewPixelPerfectOutlineFilter(c Color) *PixelPerfectOutlineFilter {
 	return f
 }
 
+// Apply renders a 1-pixel outline via a Kage shader testing cardinal neighbors.
 func (f *PixelPerfectOutlineFilter) Apply(src, dst *ebiten.Image) {
 	shader := ensurePPOutlineShader()
 	// Premultiply the outline color for the shader (write in-place, no alloc).
@@ -432,6 +439,7 @@ func (f *PixelPerfectOutlineFilter) Apply(src, dst *ebiten.Image) {
 	dst.DrawRectShader(bounds.Dx(), bounds.Dy(), shader, &f.shaderOp)
 }
 
+// Padding returns 1; the outline extends 1 pixel beyond the source bounds.
 func (f *PixelPerfectOutlineFilter) Padding() int { return 1 }
 
 // --- PixelPerfectInlineFilter ---
@@ -457,6 +465,7 @@ func NewPixelPerfectInlineFilter(c Color) *PixelPerfectInlineFilter {
 	return f
 }
 
+// Apply recolors edge pixels that border transparent areas via a Kage shader.
 func (f *PixelPerfectInlineFilter) Apply(src, dst *ebiten.Image) {
 	shader := ensurePPInlineShader()
 	// Write in-place, no alloc.
@@ -470,6 +479,7 @@ func (f *PixelPerfectInlineFilter) Apply(src, dst *ebiten.Image) {
 	dst.DrawRectShader(bounds.Dx(), bounds.Dy(), shader, &f.shaderOp)
 }
 
+// Padding returns 0; inlines only affect existing opaque pixels.
 func (f *PixelPerfectInlineFilter) Padding() int { return 0 }
 
 // --- PaletteFilter ---
@@ -529,6 +539,7 @@ func (f *PaletteFilter) ensurePaletteTex() {
 	f.paletteDirty = false
 }
 
+// Apply remaps pixel colors through the palette based on luminance.
 func (f *PaletteFilter) Apply(src, dst *ebiten.Image) {
 	shader := ensurePaletteShader()
 	f.ensurePaletteTex()
@@ -542,6 +553,7 @@ func (f *PaletteFilter) Apply(src, dst *ebiten.Image) {
 	dst.DrawRectShader(bounds.Dx(), bounds.Dy(), shader, &f.shaderOp)
 }
 
+// Padding returns 0; palette remapping doesn't expand the image bounds.
 func (f *PaletteFilter) Padding() int { return 0 }
 
 // --- CustomShaderFilter ---
@@ -566,6 +578,7 @@ func NewCustomShaderFilter(shader *ebiten.Shader, padding int) *CustomShaderFilt
 	}
 }
 
+// Apply runs the user-provided Kage shader with src as Images[0].
 func (f *CustomShaderFilter) Apply(src, dst *ebiten.Image) {
 	bounds := src.Bounds()
 	f.shaderOp.Images[0] = src
@@ -575,6 +588,7 @@ func (f *CustomShaderFilter) Apply(src, dst *ebiten.Image) {
 	dst.DrawRectShader(bounds.Dx(), bounds.Dy(), f.Shader, &f.shaderOp)
 }
 
+// Padding returns the padding value set at construction time.
 func (f *CustomShaderFilter) Padding() int { return f.padding }
 
 // --- Filter padding helper ---

@@ -54,7 +54,12 @@ func (s *Scene) submitSprite(target *ebiten.Image, cmd *RenderCommand, op *ebite
 		op.GeoM.Concat(commandGeoM(cmd))
 		op.ColorScale.Reset()
 		a := float32(cmd.Color.A)
-		op.ColorScale.Scale(float32(cmd.Color.R)*a, float32(cmd.Color.G)*a, float32(cmd.Color.B)*a, a)
+		if a == 0 && cmd.Color.R == 0 && cmd.Color.G == 0 && cmd.Color.B == 0 {
+			a = 1
+			op.ColorScale.Scale(1, 1, 1, 1)
+		} else {
+			op.ColorScale.Scale(float32(cmd.Color.R)*a, float32(cmd.Color.G)*a, float32(cmd.Color.B)*a, a)
+		}
 		op.Blend = cmd.BlendMode.EbitenBlend()
 		target.DrawImage(cmd.directImage, op)
 		return
@@ -103,7 +108,12 @@ func (s *Scene) submitSprite(target *ebiten.Image, cmd *RenderCommand, op *ebite
 	// Apply premultiplied color scale
 	op.ColorScale.Reset()
 	a := float32(cmd.Color.A)
-	op.ColorScale.Scale(float32(cmd.Color.R)*a, float32(cmd.Color.G)*a, float32(cmd.Color.B)*a, a)
+	if a == 0 && cmd.Color.R == 0 && cmd.Color.G == 0 && cmd.Color.B == 0 {
+		a = 1
+		op.ColorScale.Scale(1, 1, 1, 1)
+	} else {
+		op.ColorScale.Scale(float32(cmd.Color.R)*a, float32(cmd.Color.G)*a, float32(cmd.Color.B)*a, a)
+	}
 
 	op.Blend = cmd.BlendMode.EbitenBlend()
 

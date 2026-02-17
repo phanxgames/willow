@@ -17,7 +17,9 @@ type TweenGroup struct {
 	count  int
 	fields [4]*float64
 	target *Node
-	Done   bool
+	// Done is true when all tweens in the group have finished or the target
+	// node has been disposed.
+	Done bool
 }
 
 // Update advances all tweens by dt seconds, writes values to the target fields,

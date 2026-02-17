@@ -10,16 +10,28 @@ import (
 
 // Light represents a light source in a LightLayer.
 type Light struct {
-	X, Y          float64
-	Radius        float64       // controls the drawn size (diameter = Radius*2)
-	Rotation      float64       // radians; useful for directional shapes (cones, etc.)
-	Intensity     float64
-	Enabled       bool
-	Color         Color         // Tint color; zero value (or white) means neutral (no tint).
-	TextureRegion TextureRegion // if non-zero, use this sprite sheet region instead of default circle
-	Target        *Node         // if set, light follows this node's pivot point
-	OffsetX       float64       // offset from the target's pivot in light-layer space
-	OffsetY       float64
+	// X and Y are the light's position in the light layer's local coordinate space.
+	X, Y float64
+	// Radius controls the drawn size (diameter = Radius*2 pixels).
+	Radius float64
+	// Rotation is the light's rotation in radians; useful for directional shapes.
+	Rotation float64
+	// Intensity controls light brightness in the range [0, 1].
+	Intensity float64
+	// Enabled determines whether this light is drawn during Redraw.
+	// Disabled lights are skipped entirely.
+	Enabled bool
+	// Color is the tint color. Zero value or white means neutral (no tint).
+	Color Color
+	// TextureRegion, if non-zero, uses this sprite sheet region instead of
+	// the default feathered circle.
+	TextureRegion TextureRegion
+	// Target, if set, makes the light follow this node's pivot point each Redraw.
+	Target *Node
+	// OffsetX and OffsetY offset the light from the target's pivot in
+	// light-layer space.
+	OffsetX float64
+	OffsetY float64
 }
 
 // LightLayer provides a convenient 2D lighting effect using erase blending.
@@ -31,7 +43,7 @@ type LightLayer struct {
 	rt           *RenderTexture
 	node         *Node
 	lights       []*Light
-	pages        []*ebiten.Image       // atlas pages for resolving Light.TextureRegion
+	pages        []*ebiten.Image // atlas pages for resolving Light.TextureRegion
 	ambientAlpha float64
 	circleCache  map[int]*ebiten.Image // cached circle textures keyed by quantized radius
 	imgOp        ebiten.DrawImageOptions

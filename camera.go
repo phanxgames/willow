@@ -17,11 +17,17 @@ type scrollAnim struct {
 
 // Camera controls the view into the scene: position, zoom, rotation, and viewport.
 type Camera struct {
-	X, Y     float64
-	Zoom     float64
+	// X and Y are the world-space position the camera centers on.
+	X, Y float64
+	// Zoom is the scale factor (1.0 = no zoom, >1 = zoom in, <1 = zoom out).
+	Zoom float64
+	// Rotation is the camera rotation in radians (clockwise).
 	Rotation float64
+	// Viewport is the screen-space rectangle this camera renders into.
 	Viewport Rect
 
+	// CullEnabled skips nodes whose world AABB doesn't intersect the
+	// camera's visible bounds.
 	CullEnabled bool
 
 	followTarget  *Node
@@ -29,8 +35,12 @@ type Camera struct {
 	followOffsetY float64
 	followLerp    float64
 
+	// BoundsEnabled clamps the camera position so the visible area stays
+	// within Bounds.
 	BoundsEnabled bool
-	Bounds        Rect
+	// Bounds is the world-space rectangle the camera is clamped to when
+	// BoundsEnabled is true.
+	Bounds Rect
 
 	viewMatrix    [6]float64
 	invViewMatrix [6]float64

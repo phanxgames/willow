@@ -13,8 +13,12 @@ import (
 )
 
 // Font is the interface for text measurement and layout.
+// Implemented by BitmapFont and TTFFont.
 type Font interface {
+	// MeasureString returns the pixel width and height of the rendered text,
+	// accounting for newlines and the font's line height.
 	MeasureString(text string) (width, height float64)
+	// LineHeight returns the vertical distance between baselines in pixels.
 	LineHeight() float64
 }
 
@@ -30,13 +34,21 @@ type Outline struct {
 
 // TextBlock holds text content, formatting, and cached layout state.
 type TextBlock struct {
-	Content    string
-	Font       Font
-	Align      TextAlign
-	WrapWidth  float64
-	Color      Color
-	Outline    *Outline
-	LineHeight float64 // override; 0 = use Font.LineHeight()
+	// Content is the text string to render. Supports embedded newlines.
+	Content string
+	// Font is the BitmapFont or TTFFont used for measurement and rendering.
+	Font Font
+	// Align controls horizontal alignment within the wrap width or measured bounds.
+	Align TextAlign
+	// WrapWidth is the maximum line width in pixels before word wrapping.
+	// Zero means no wrapping.
+	WrapWidth float64
+	// Color is the fill color for the text glyphs.
+	Color Color
+	// Outline defines a text stroke rendered behind the fill. Nil means no outline.
+	Outline *Outline
+	// LineHeight overrides the font's default line height. Zero uses Font.LineHeight().
+	LineHeight float64
 
 	// Cached layout (unexported)
 	layoutDirty bool

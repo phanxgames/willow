@@ -1,6 +1,12 @@
 # Willow
 
-A retained-mode 2D scene graph (also known as a display tree, display graph), interaction layer, and render compiler for [Ebitengine](https://ebitengine.org).
+[![Go Reference](https://pkg.go.dev/badge/github.com/phanxgames/willow.svg)](https://pkg.go.dev/github.com/phanxgames/willow)
+[![Go Report Card](https://goreportcard.com/badge/github.com/phanxgames/willow)](https://goreportcard.com/report/github.com/phanxgames/willow)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+A retained-mode 2D scene graph, interaction layer, and render compiler for [Ebitengine](https://ebitengine.org).
+
+> **New here?** Check out the [examples](examples/) — runnable demos with no external assets required.
 
 ---
 
@@ -72,6 +78,19 @@ func main() {
 
 	ebiten.RunGame(&Game{scene: scene})
 }
+```
+
+---
+
+## Examples
+
+Runnable examples are included — no external assets needed:
+
+```bash
+go run ./examples/basic        # Bouncing colored sprite
+go run ./examples/shapes       # Rotating polygon hierarchy with parent/child transforms
+go run ./examples/interaction  # Draggable, clickable rectangles
+go run ./examples/tilemap      # Tile map rendering with camera controls
 ```
 
 ---

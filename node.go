@@ -11,64 +11,69 @@ import (
 
 // Filter is defined in filter.go (Phase 09).
 
-// HitShape is used for custom hit testing regions (Phase 08).
+// HitShape defines a custom hit testing region in local coordinates.
+// Implement this interface and assign it to Node.HitShape to override
+// the default axis-aligned bounding box test.
 type HitShape interface {
+	// Contains reports whether the local-space point (x, y) is inside the shape.
 	Contains(x, y float64) bool
 }
 
 // --- Callback context placeholders (Phase 08) ---
 
-// PointerContext carries pointer event data.
+// PointerContext carries pointer event data passed to pointer callbacks.
 type PointerContext struct {
-	Node      *Node
-	EntityID  uint32
-	UserData  any
-	GlobalX   float64
-	GlobalY   float64
-	LocalX    float64
-	LocalY    float64
-	Button    MouseButton
-	PointerID int
-	Modifiers KeyModifiers
+	Node      *Node        // the node under the pointer, or nil if none
+	EntityID  uint32       // the hit node's EntityID (for ECS bridging)
+	UserData  any          // the hit node's UserData
+	GlobalX   float64      // pointer X in world coordinates
+	GlobalY   float64      // pointer Y in world coordinates
+	LocalX    float64      // pointer X in the hit node's local coordinates
+	LocalY    float64      // pointer Y in the hit node's local coordinates
+	Button    MouseButton  // which mouse button is involved
+	PointerID int          // 0 = mouse, 1-9 = touch contacts
+	Modifiers KeyModifiers // keyboard modifier keys held during the event
 }
 
-// ClickContext carries click event data.
+// ClickContext carries click event data passed to click callbacks.
 type ClickContext struct {
-	Node      *Node
-	EntityID  uint32
-	UserData  any
-	GlobalX   float64
-	GlobalY   float64
-	LocalX    float64
-	LocalY    float64
-	Button    MouseButton
-	PointerID int
-	Modifiers KeyModifiers
+	Node      *Node        // the clicked node
+	EntityID  uint32       // the clicked node's EntityID (for ECS bridging)
+	UserData  any          // the clicked node's UserData
+	GlobalX   float64      // click X in world coordinates
+	GlobalY   float64      // click Y in world coordinates
+	LocalX    float64      // click X in the node's local coordinates
+	LocalY    float64      // click Y in the node's local coordinates
+	Button    MouseButton  // which mouse button was clicked
+	PointerID int          // 0 = mouse, 1-9 = touch contacts
+	Modifiers KeyModifiers // keyboard modifier keys held during the click
 }
 
-// DragContext carries drag event data.
+// DragContext carries drag event data passed to drag callbacks.
 type DragContext struct {
-	Node      *Node
-	EntityID  uint32
-	UserData  any
-	GlobalX   float64
-	GlobalY   float64
-	LocalX    float64
-	LocalY    float64
-	StartX    float64
-	StartY    float64
-	DeltaX    float64
-	DeltaY    float64
-	Button    MouseButton
-	PointerID int
-	Modifiers KeyModifiers
+	Node         *Node        // the node being dragged
+	EntityID     uint32       // the dragged node's EntityID (for ECS bridging)
+	UserData     any          // the dragged node's UserData
+	GlobalX      float64      // current pointer X in world coordinates
+	GlobalY      float64      // current pointer Y in world coordinates
+	LocalX       float64      // current pointer X in the node's local coordinates
+	LocalY       float64      // current pointer Y in the node's local coordinates
+	StartX       float64      // world X where the drag began
+	StartY       float64      // world Y where the drag began
+	DeltaX       float64      // X movement since the previous drag event
+	DeltaY       float64      // Y movement since the previous drag event
+	ScreenDeltaX float64      // X movement in screen pixels since the previous drag event
+	ScreenDeltaY float64      // Y movement in screen pixels since the previous drag event
+	Button       MouseButton  // which mouse button initiated the drag
+	PointerID    int          // 0 = mouse, 1-9 = touch contacts
+	Modifiers    KeyModifiers // keyboard modifier keys held during the drag
 }
 
-// PinchContext carries pinch gesture data.
+// PinchContext carries two-finger pinch/rotate gesture data.
 type PinchContext struct {
-	CenterX, CenterY float64
-	Scale, ScaleDelta float64
-	Rotation, RotDelta float64
+	CenterX, CenterY   float64 // midpoint between the two touch points in world coordinates
+	Scale, ScaleDelta  float64 // cumulative scale factor and frame-to-frame change
+	Rotation, RotDelta float64 // cumulative rotation (radians) and frame-to-frame change
 }
 
 // --- ID counter ---
@@ -87,87 +92,157 @@ func nextNodeID() uint32 {
 // all node types to avoid interface dispatch on the hot path.
 type Node struct {
 	// Identity
-	ID   uint32
+
+	// ID is a unique auto-assigned identifier (never zero for live nodes).
+	ID uint32
+	// Name is a human-readable label for debugging; not used for lookups.
 	Name string
+	// Type determines how this node is rendered (container, sprite, mesh, etc.).
 	Type NodeType
 
 	// Hierarchy
+
+	// Parent points to this node's parent, or nil for the root.
 	Parent   *Node
 	children []*Node
 
-	// Transform (local)
-	X, Y         float64
-	ScaleX       float64
-	ScaleY       float64
-	Rotation     float64
-	SkewX, SkewY float64
-	PivotX       float64
-	PivotY       float64
+	// Transform (local, relative to Parent)
 
-	// Computed (unexported, updated during traversal in Phase 03)
+	// X and Y are the local-space position in pixels (origin at top-left, Y down).
+	X, Y float64
+	// ScaleX and ScaleY are the local scale factors (1.0 = no scaling).
+	ScaleX float64
+	ScaleY float64
+	// Rotation is the local rotation in radians (clockwise).
+	Rotation float64
+	// SkewX and SkewY are shear angles in radians.
+	SkewX, SkewY float64
+	// PivotX and PivotY are the transform origin in local pixels. Scale,
+	// rotation, and skew are applied around this point.
+	PivotX float64
+	PivotY float64
+
+	// Computed (unexported, updated during traversal)
 	worldTransform [6]float64
 	worldAlpha     float64
 	transformDirty bool
 
 	// Visibility & interaction
-	Alpha        float64
-	Visible      bool
-	Renderable   bool
+
+	// Alpha is the node's opacity in [0, 1]. Multiplied with the parent's
+	// computed alpha, so children inherit transparency.
+	Alpha float64
+	// Visible controls whether this node and its subtree are drawn.
+	// An invisible node is also excluded from hit testing.
+	Visible bool
+	// Renderable controls whether this node emits render commands. When false
+	// the node is skipped during drawing but its children are still traversed.
+	Renderable bool
+	// Interactable controls whether this node responds to pointer events.
+	// When false the entire subtree is excluded from hit testing.
 	Interactable bool
 
 	// Ordering
-	ZIndex      int
+
+	// ZIndex controls draw order among siblings. Higher values draw on top.
+	// Use SetZIndex to change this so the parent is notified to re-sort.
+	ZIndex int
+	// RenderLayer is the primary sort key for render commands.
+	// All commands in a lower layer draw before any command in a higher layer.
 	RenderLayer uint8
+	// GlobalOrder is a secondary sort key within the same RenderLayer.
+	// Set it to override the default tree-order sorting.
 	GlobalOrder int
 
 	// Metadata
+
+	// UserData is an arbitrary value the application can attach to a node.
 	UserData any
+	// EntityID links this node to an ECS entity. When non-zero, interaction
+	// events on this node are forwarded to the Scene's EntityStore.
 	EntityID uint32
 
 	// Sprite fields (NodeTypeSprite)
+
+	// TextureRegion identifies the sub-image within an atlas page to draw.
 	TextureRegion TextureRegion
-	BlendMode     BlendMode
-	Color         Color
-	customImage   *ebiten.Image // user-provided offscreen canvas (RenderTexture)
+	// BlendMode selects the compositing operation used when drawing this node.
+	BlendMode BlendMode
+	// Color is a multiplicative tint applied to the sprite. The default
+	// {1,1,1,1} means no tint.
+	Color       Color
+	customImage *ebiten.Image // user-provided offscreen canvas (RenderTexture)
 
 	// Mesh fields (NodeTypeMesh)
-	Vertices        []ebiten.Vertex
-	Indices         []uint16
-	MeshImage       *ebiten.Image
+
+	// Vertices holds the mesh vertex data for DrawTriangles.
+	Vertices []ebiten.Vertex
+	// Indices holds the triangle index list for DrawTriangles.
+	Indices []uint16
+	// MeshImage is the texture sampled by DrawTriangles.
+	MeshImage        *ebiten.Image
 	transformedVerts []ebiten.Vertex // preallocated transform buffer
 	meshAABB         Rect            // cached local-space AABB
 	meshAABBDirty    bool            // recompute AABB when true
 
 	// Particle fields (NodeTypeParticleEmitter)
+
+	// Emitter manages the particle pool and simulation for this node.
 	Emitter *ParticleEmitter
 
 	// Text fields (NodeTypeText)
+
+	// TextBlock holds the text content, font, and cached layout state.
 	TextBlock *TextBlock
 
+	// Update field (optional callback)
+
+	// OnUpdate is called once per tick during Scene.Update if set.
+	OnUpdate func(dt float64)
+
 	// Hit testing
+
+	// HitShape overrides the default AABB hit test with a custom shape.
+	// Nil means use the node's bounding box.
 	HitShape HitShape
 
 	// Filters
+
+	// Filters is the chain of visual effects applied to this node's rendered
+	// output. Filters are applied in order; each reads from the previous
+	// result and writes to a new buffer.
 	Filters []Filter
 
-	// Cache fields (Phase 09)
+	// Cache fields
 	cacheEnabled bool
 	cacheTexture *ebiten.Image
 	cacheDirty   bool
 
-	// Mask field (Phase 09)
+	// Mask field
 	mask *Node
 
-	// Per-node callbacks (nil by default; zero cost when unused)
+	// Per-node callbacks (nil by default; zero cost when unused).
+	// Scene-level handlers fire before per-node callbacks.
+
+	// OnPointerDown fires when a pointer button is pressed over this node.
 	OnPointerDown func(PointerContext)
-	OnPointerUp   func(PointerContext)
+	// OnPointerUp fires when a pointer button is released over this node.
+	OnPointerUp func(PointerContext)
+	// OnPointerMove fires when the pointer moves over this node (hover).
 	OnPointerMove func(PointerContext)
-	OnClick       func(ClickContext)
-	OnDragStart   func(DragContext)
-	OnDrag        func(DragContext)
-	OnDragEnd      func(DragContext)
-	OnPinch        func(PinchContext)
+	// OnClick fires on press then release over this node.
+	OnClick func(ClickContext)
+	// OnDragStart fires when a drag gesture begins on this node.
+	OnDragStart func(DragContext)
+	// OnDrag fires each frame while this node is being dragged.
+	OnDrag func(DragContext)
+	// OnDragEnd fires when a drag gesture ends on this node.
+	OnDragEnd func(DragContext)
+	// OnPinch fires during a two-finger pinch gesture over this node.
+	OnPinch func(PinchContext)
+	// OnPointerEnter fires when the pointer enters this node's bounds.
 	OnPointerEnter func(PointerContext)
+	// OnPointerLeave fires when the pointer leaves this node's bounds.
 	OnPointerLeave func(PointerContext)
 
 	// Internal
@@ -200,6 +275,10 @@ func NewContainer(name string) *Node {
 func NewSprite(name string, region TextureRegion) *Node {
 	n := &Node{Name: name, Type: NodeTypeSprite, TextureRegion: region}
 	nodeDefaults(n)
+	// If no region is specified (zero value), default to WhitePixel
+	if region == (TextureRegion{}) {
+		n.customImage = WhitePixel
+	}
 	return n
 }
 
@@ -231,7 +310,8 @@ func NewParticleEmitter(name string, cfg EmitterConfig) *Node {
 	return n
 }
 
-// NewText creates a text node with the given content and font.
+// NewText creates a text node that renders the given string using font.
+// The node's TextBlock is initialized with white color and dirty layout.
 func NewText(name string, content string, font Font) *Node {
 	n := &Node{
 		Name: name,
@@ -336,6 +416,7 @@ func (n *Node) RemoveChild(child *Node) {
 }
 
 // RemoveChildAt removes and returns the child at the given index.
+// Panics if the index is out of range.
 func (n *Node) RemoveChildAt(index int) *Node {
 	if globalDebug {
 		debugCheckDisposed(n, "RemoveChildAt")
@@ -384,11 +465,13 @@ func (n *Node) NumChildren() int {
 }
 
 // ChildAt returns the child at the given index.
+// Panics if the index is out of range.
 func (n *Node) ChildAt(index int) *Node {
 	return n.children[index]
 }
 
 // SetChildIndex moves child to a new index among its siblings.
+// Panics if child is not a child of n or if index is out of range.
 func (n *Node) SetChildIndex(child *Node, index int) {
 	if child.Parent != n {
 		panic("willow: child's parent is not this node")
@@ -417,7 +500,8 @@ func (n *Node) SetChildIndex(child *Node, index int) {
 	n.childrenSorted = false
 }
 
-// SetZIndex sets the node's ZIndex and marks the parent's children as unsorted.
+// SetZIndex sets the node's ZIndex and marks the parent's children as unsorted,
+// so the next traversal will re-sort siblings by ZIndex.
 func (n *Node) SetZIndex(z int) {
 	if n.ZIndex == z {
 		return

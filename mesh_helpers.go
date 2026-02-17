@@ -12,7 +12,9 @@ import (
 type RopeJoinMode uint8
 
 const (
+	// RopeJoinMiter extends segment corners to a sharp point.
 	RopeJoinMiter RopeJoinMode = iota
+	// RopeJoinBevel flattens corners by inserting extra vertices, avoiding spikes.
 	RopeJoinBevel
 )
 

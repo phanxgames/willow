@@ -11,12 +11,22 @@ type Color struct {
 // ColorWhite is the default tint (no color modification).
 var ColorWhite = Color{1, 1, 1, 1}
 
-// Vec2 is a 2D vector.
+// Vec2 is a 2D vector used for positions, offsets, sizes, and directions
+// throughout the API.
 type Vec2 struct {
 	X, Y float64
 }
 
-// Rect is an axis-aligned rectangle.
+// WhitePixel is a 1x1 white image used by default for solid color sprites.
+var WhitePixel *ebiten.Image
+
+func init() {
+	WhitePixel = ebiten.NewImage(1, 1)
+	WhitePixel.Fill(ColorWhite.toRGBA())
+}
+
+// Rect is an axis-aligned rectangle. The coordinate system has its origin at
+// the top-left, with Y increasing downward.
 type Rect struct {
 	X, Y, Width, Height float64
 }
@@ -106,53 +116,54 @@ func (b BlendMode) EbitenBlend() ebiten.Blend {
 type NodeType uint8
 
 const (
-	NodeTypeContainer      NodeType = iota
-	NodeTypeSprite
-	NodeTypeMesh
-	NodeTypeParticleEmitter
-	NodeTypeText
+	NodeTypeContainer       NodeType = iota // group node with no visual output
+	NodeTypeSprite                          // renders a TextureRegion or custom image
+	NodeTypeMesh                            // renders arbitrary triangles via DrawTriangles
+	NodeTypeParticleEmitter                 // CPU-simulated particle system
+	NodeTypeText                            // renders text via BitmapFont glyphs or TTF
 )
 
 // EventType identifies a kind of interaction event.
 type EventType uint8
 
 const (
-	EventPointerDown EventType = iota
-	EventPointerUp
-	EventPointerMove
-	EventClick
-	EventDragStart
-	EventDrag
-	EventDragEnd
-	EventPinch        // not in original spec enum; needed for ECS bridge
-	EventPointerEnter // pointer entered a node's bounds
-	EventPointerLeave // pointer left a node's bounds
+	EventPointerDown  EventType = iota // fires when a pointer button is pressed
+	EventPointerUp                     // fires when a pointer button is released
+	EventPointerMove                   // fires when the pointer moves (hover, no button)
+	EventClick                         // fires on press then release over the same node
+	EventDragStart                     // fires when movement exceeds the drag dead zone
+	EventDrag                          // fires each frame while dragging
+	EventDragEnd                       // fires when the pointer is released after dragging
+	EventPinch                         // fires during a two-finger pinch/rotate gesture
+	EventPointerEnter                  // fires when the pointer enters a node's bounds
+	EventPointerLeave                  // fires when the pointer leaves a node's bounds
 )
 
 // MouseButton identifies a mouse button.
 type MouseButton uint8
 
 const (
-	MouseButtonLeft   MouseButton = iota
-	MouseButtonRight
-	MouseButtonMiddle
+	MouseButtonLeft   MouseButton = iota // primary (left) mouse button
+	MouseButtonRight                     // secondary (right) mouse button
+	MouseButtonMiddle                    // middle mouse button (scroll wheel click)
 )
 
 // KeyModifiers is a bitmask of keyboard modifier keys.
+// Values can be combined with bitwise OR (e.g. ModShift | ModCtrl).
 type KeyModifiers uint8
 
 const (
-	ModShift KeyModifiers = 1 << iota
-	ModCtrl
-	ModAlt
-	ModMeta
+	ModShift KeyModifiers = 1 << iota // Shift key
+	ModCtrl                           // Control key
+	ModAlt                            // Alt / Option key
+	ModMeta                           // Meta / Command / Windows key
 )
 
 // TextAlign controls horizontal text alignment within a TextBlock.
 type TextAlign uint8
 
 const (
-	TextAlignLeft   TextAlign = iota
-	TextAlignCenter
-	TextAlignRight
+	TextAlignLeft   TextAlign = iota // align text to the left edge (default)
+	TextAlignCenter                  // center text horizontally
+	TextAlignRight                   // align text to the right edge
 )

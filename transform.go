@@ -131,7 +131,7 @@ func (n *Node) SetRotation(r float64) {
 	n.transformDirty = true
 }
 
-// SetSkew sets the node's SkewX and SkewY and marks it dirty.
+// SetSkew sets the node's SkewX and SkewY (in radians) and marks it dirty.
 func (n *Node) SetSkew(sx, sy float64) {
 	n.SkewX = sx
 	n.SkewY = sy

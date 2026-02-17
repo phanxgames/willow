@@ -1,0 +1,84 @@
+// Tilemap demonstrates a grid-based tilemap with camera panning.
+package main
+
+import (
+	"image"
+	"log"
+	"math/rand/v2"
+	"os"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/phanxgames/willow"
+)
+
+const (
+	windowTitle = "Willow — Tilemap Example"
+	showFPS     = true
+	screenW     = 640
+	screenH     = 480
+	tileSize    = 32
+	mapWidth    = 30
+	mapHeight   = 30
+)
+
+func main() {
+	f, err := os.Open("examples/tileset.png")
+	if err != nil {
+		log.Fatalf("failed to open tileset: %v", err)
+	}
+	defer f.Close()
+
+	img, _, err := ebitenutil.NewImageFromReader(f)
+	if err != nil {
+		log.Fatalf("failed to load tileset image: %v", err)
+	}
+
+	scene := willow.NewScene()
+	scene.ClearColor = willow.Color{R: 0.1, G: 0.1, B: 0.1, A: 1}
+
+	cam := scene.NewCamera(willow.Rect{X: 0, Y: 0, Width: screenW, Height: screenH})
+	cam.X = (mapWidth * tileSize) / 2
+	cam.Y = (mapHeight * tileSize) / 2
+	cam.MarkDirty()
+
+	mapContainer := willow.NewContainer("tilemap")
+	scene.Root().AddChild(mapContainer)
+
+	// Populate the tilemap with random tiles.
+	tilesetW := img.Bounds().Dx()
+	tilesPerRow := tilesetW / tileSize
+
+	for y := range mapHeight {
+		for x := range mapWidth {
+			tileIdx := rand.IntN(4)
+			tx := (tileIdx % tilesPerRow) * tileSize
+			ty := (tileIdx / tilesPerRow) * tileSize
+
+			sub := img.SubImage(image.Rect(tx, ty, tx+tileSize, ty+tileSize)).(*ebiten.Image)
+
+			tile := willow.NewSprite("tile", willow.TextureRegion{})
+			tile.SetCustomImage(sub)
+			tile.X = float64(x * tileSize)
+			tile.Y = float64(y * tileSize)
+			mapContainer.AddChild(tile)
+		}
+	}
+
+	// Camera panning via OnDrag with screen-space deltas.
+	scene.Root().HitShape = willow.HitRect{Width: 1e6, Height: 1e6}
+	scene.Root().OnDrag = func(ctx willow.DragContext) {
+		cam.X -= ctx.ScreenDeltaX / cam.Zoom
+		cam.Y -= ctx.ScreenDeltaY / cam.Zoom
+		cam.MarkDirty()
+	}
+
+	if err := willow.Run(scene, willow.RunConfig{
+		Title:   windowTitle,
+		Width:   screenW,
+		Height:  screenH,
+		ShowFPS: showFPS,
+	}); err != nil {
+		log.Fatal(err)
+	}
+}

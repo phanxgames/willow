@@ -39,8 +39,8 @@ func TestSetCustomImageAccessorRoundTrip(t *testing.T) {
 	defer img.Deallocate()
 
 	n := NewSprite("s", TextureRegion{})
-	if n.CustomImage() != nil {
-		t.Error("CustomImage should be nil initially")
+	if n.CustomImage() != WhitePixel {
+		t.Error("CustomImage should be WhitePixel initially for zero TextureRegion")
 	}
 
 	n.SetCustomImage(img)

@@ -40,6 +40,7 @@ func (c HitCircle) Contains(x, y float64) bool {
 
 // HitPolygon is a convex polygon hit area in local coordinates.
 // Points must define a convex polygon in either winding order.
+// Concave polygons will produce incorrect results.
 type HitPolygon struct {
 	Points []Vec2
 }
@@ -76,15 +77,19 @@ func (p HitPolygon) Contains(x, y float64) bool {
 // --- Per-pointer state ---
 
 type pointerState struct {
-	down      bool
-	startX    float64
-	startY    float64
-	lastX     float64
-	lastY     float64
-	hitNode   *Node
-	hoverNode *Node       // last node the pointer was hovering over (for enter/leave)
-	dragging  bool
-	button    MouseButton // button captured at press time
+	down        bool
+	startX      float64
+	startY      float64
+	lastX       float64
+	lastY       float64
+	screenX     float64
+	screenY     float64
+	lastScreenX float64
+	lastScreenY float64
+	hitNode     *Node
+	hoverNode   *Node // last node the pointer was hovering over (for enter/leave)
+	dragging    bool
+	button      MouseButton // button captured at press time
 }
 
 // --- Pinch state ---
@@ -219,6 +224,8 @@ func removePinchHandler(s []pinchHandler, id uint32) []pinchHandler {
 // --- Scene-level event registration ---
 
 // OnPointerDown registers a scene-level callback for pointer down events.
+// Multiple registrations are additive; scene-level handlers fire before
+// per-node callbacks. Use CallbackHandle.Remove to unregister.
 func (s *Scene) OnPointerDown(fn func(PointerContext)) CallbackHandle {
 	s.handlers.nextID++
 	id := s.handlers.nextID
@@ -227,6 +234,7 @@ func (s *Scene) OnPointerDown(fn func(PointerContext)) CallbackHandle {
 }
 
 // OnPointerUp registers a scene-level callback for pointer up events.
+// Multiple registrations are additive. Use CallbackHandle.Remove to unregister.
 func (s *Scene) OnPointerUp(fn func(PointerContext)) CallbackHandle {
 	s.handlers.nextID++
 	id := s.handlers.nextID
@@ -235,6 +243,7 @@ func (s *Scene) OnPointerUp(fn func(PointerContext)) CallbackHandle {
 }
 
 // OnPointerMove registers a scene-level callback for pointer move events.
+// Multiple registrations are additive. Use CallbackHandle.Remove to unregister.
 func (s *Scene) OnPointerMove(fn func(PointerContext)) CallbackHandle {
 	s.handlers.nextID++
 	id := s.handlers.nextID
@@ -261,6 +270,7 @@ func (s *Scene) OnPointerLeave(fn func(PointerContext)) CallbackHandle {
 }
 
 // OnClick registers a scene-level callback for click events.
+// Multiple registrations are additive. Use CallbackHandle.Remove to unregister.
 func (s *Scene) OnClick(fn func(ClickContext)) CallbackHandle {
 	s.handlers.nextID++
 	id := s.handlers.nextID
@@ -269,6 +279,7 @@ func (s *Scene) OnClick(fn func(ClickContext)) CallbackHandle {
 }
 
 // OnDragStart registers a scene-level callback for drag start events.
+// Multiple registrations are additive. Use CallbackHandle.Remove to unregister.
 func (s *Scene) OnDragStart(fn func(DragContext)) CallbackHandle {
 	s.handlers.nextID++
 	id := s.handlers.nextID
@@ -277,6 +288,7 @@ func (s *Scene) OnDragStart(fn func(DragContext)) CallbackHandle {
 }
 
 // OnDrag registers a scene-level callback for drag events.
+// Multiple registrations are additive. Use CallbackHandle.Remove to unregister.
 func (s *Scene) OnDrag(fn func(DragContext)) CallbackHandle {
 	s.handlers.nextID++
 	id := s.handlers.nextID
@@ -285,6 +297,7 @@ func (s *Scene) OnDrag(fn func(DragContext)) CallbackHandle {
 }
 
 // OnDragEnd registers a scene-level callback for drag end events.
+// Multiple registrations are additive. Use CallbackHandle.Remove to unregister.
 func (s *Scene) OnDragEnd(fn func(DragContext)) CallbackHandle {
 	s.handlers.nextID++
 	id := s.handlers.nextID
@@ -293,6 +306,7 @@ func (s *Scene) OnDragEnd(fn func(DragContext)) CallbackHandle {
 }
 
 // OnPinch registers a scene-level callback for pinch events.
+// Multiple registrations are additive. Use CallbackHandle.Remove to unregister.
 func (s *Scene) OnPinch(fn func(PinchContext)) CallbackHandle {
 	s.handlers.nextID++
 	id := s.handlers.nextID
@@ -413,7 +427,9 @@ func (s *Scene) processInput() {
 		cam.computeViewMatrix()
 	}
 
-	s.processMousePointer(cam, mods)
+	if !s.processInjectedInput(cam, mods) {
+		s.processMousePointer(cam, mods)
+	}
 	s.processTouchPointers(cam, mods)
 	s.detectPinch(mods)
 }
@@ -451,7 +467,7 @@ func (s *Scene) processMousePointer(cam *Camera, mods KeyModifiers) {
 		}
 	}
 
-	s.processPointer(0, wx, wy, pressed, button, mods)
+	s.processPointer(0, wx, wy, sx, sy, pressed, button, mods)
 }
 
 // processTouchPointers handles touch input (pointers 1-9).
@@ -469,8 +485,9 @@ func (s *Scene) processTouchPointers(cam *Camera, mods KeyModifiers) {
 		activeSlots[slot] = true
 
 		tx, ty := ebiten.TouchPosition(tid)
-		wx, wy := screenToWorld(cam, float64(tx), float64(ty))
-		s.processPointer(slot, wx, wy, true, MouseButtonLeft, mods)
+		stx, sty := float64(tx), float64(ty)
+		wx, wy := screenToWorld(cam, stx, sty)
+		s.processPointer(slot, wx, wy, stx, sty, true, MouseButtonLeft, mods)
 	}
 
 	// Release any touch slots that are no longer active.
@@ -478,7 +495,7 @@ func (s *Scene) processTouchPointers(cam *Camera, mods KeyModifiers) {
 		if s.touchUsed[i] && !activeSlots[i] {
 			ps := &s.pointers[i]
 			if ps.down {
-				s.processPointer(i, ps.lastX, ps.lastY, false, MouseButtonLeft, mods)
+				s.processPointer(i, ps.lastX, ps.lastY, ps.lastScreenX, ps.lastScreenY, false, MouseButtonLeft, mods)
 			}
 			s.touchUsed[i] = false
 			s.touchMap[i] = 0
@@ -507,7 +524,8 @@ func (s *Scene) touchSlot(tid ebiten.TouchID) int {
 }
 
 // processPointer runs the pointer state machine for a single pointer.
-func (s *Scene) processPointer(pointerID int, wx, wy float64, pressed bool, button MouseButton, mods KeyModifiers) {
+// sx, sy are the raw screen-space coordinates (before camera transform).
+func (s *Scene) processPointer(pointerID int, wx, wy, sx, sy float64, pressed bool, button MouseButton, mods KeyModifiers) {
 	ps := &s.pointers[pointerID]
 
 	// Determine target node: captured node or hit test.
@@ -537,15 +555,21 @@ func (s *Scene) processPointer(pointerID int, wx, wy float64, pressed bool, butt
 		ps.startY = wy
 		ps.lastX = wx
 		ps.lastY = wy
+		ps.screenX = sx
+		ps.screenY = sy
+		ps.lastScreenX = sx
+		ps.lastScreenY = sy
 		ps.hitNode = target
 		ps.dragging = false
 
 		s.firePointerDown(target, pointerID, wx, wy, ps.button, mods)
 	} else if !pressed && ps.down {
 		// Just released — use button from press start.
+		sdx := sx - ps.lastScreenX
+		sdy := sy - ps.lastScreenY
 		if ps.dragging {
 			s.fireDragEnd(ps.hitNode, pointerID, wx, wy, ps.startX, ps.startY,
-				wx-ps.lastX, wy-ps.lastY, ps.button, mods)
+				wx-ps.lastX, wy-ps.lastY, sdx, sdy, ps.button, mods)
 		} else if ps.hitNode != nil && ps.hitNode == target {
 			s.fireClick(target, pointerID, wx, wy, ps.button, mods)
 		}
@@ -559,23 +583,27 @@ func (s *Scene) processPointer(pointerID int, wx, wy float64, pressed bool, butt
 		ps.dragging = false
 	} else if pressed && ps.down {
 		// Held down, possibly moved — use button from press start.
-		if wx != ps.lastX || wy != ps.lastY {
+		if wx != ps.lastX || wy != ps.lastY || sx != ps.lastScreenX || sy != ps.lastScreenY {
+			sdx := sx - ps.lastScreenX
+			sdy := sy - ps.lastScreenY
 			if !ps.dragging {
 				dx := wx - ps.startX
 				dy := wy - ps.startY
 				if math.Sqrt(dx*dx+dy*dy) > s.dragDeadZone {
 					ps.dragging = true
 					s.fireDragStart(ps.hitNode, pointerID, wx, wy, ps.startX, ps.startY,
-						wx-ps.startX, wy-ps.startY, ps.button, mods)
+						wx-ps.startX, wy-ps.startY, sx-ps.screenX, sy-ps.screenY, ps.button, mods)
 				}
 			}
 			if ps.dragging {
 				s.fireDrag(ps.hitNode, pointerID, wx, wy, ps.startX, ps.startY,
-					wx-ps.lastX, wy-ps.lastY, ps.button, mods)
+					wx-ps.lastX, wy-ps.lastY, sdx, sdy, ps.button, mods)
 			}
 		}
 		ps.lastX = wx
 		ps.lastY = wy
+		ps.lastScreenX = sx
+		ps.lastScreenY = sy
 	} else if !pressed && !ps.down {
 		// Hover move.
 		if wx != ps.lastX || wy != ps.lastY {
@@ -818,7 +846,7 @@ func (s *Scene) fireClick(node *Node, pointerID int, wx, wy float64, button Mous
 	s.emitInteractionEvent(EventClick, node, wx, wy, lx, ly, button, mods, DragContext{}, PinchContext{})
 }
 
-func (s *Scene) fireDragStart(node *Node, pointerID int, wx, wy, startX, startY, deltaX, deltaY float64, button MouseButton, mods KeyModifiers) {
+func (s *Scene) fireDragStart(node *Node, pointerID int, wx, wy, startX, startY, deltaX, deltaY, screenDX, screenDY float64, button MouseButton, mods KeyModifiers) {
 	var lx, ly float64
 	var entityID uint32
 	var userData any
@@ -831,6 +859,7 @@ func (s *Scene) fireDragStart(node *Node, pointerID int, wx, wy, startX, startY,
 		Node: node, EntityID: entityID, UserData: userData,
 		GlobalX: wx, GlobalY: wy, LocalX: lx, LocalY: ly,
 		StartX: startX, StartY: startY, DeltaX: deltaX, DeltaY: deltaY,
+		ScreenDeltaX: screenDX, ScreenDeltaY: screenDY,
 		Button: button, PointerID: pointerID, Modifiers: mods,
 	}
 	for _, h := range s.handlers.dragStart {
@@ -842,7 +871,7 @@ func (s *Scene) fireDragStart(node *Node, pointerID int, wx, wy, startX, startY,
 	s.emitInteractionEvent(EventDragStart, node, wx, wy, lx, ly, button, mods, ctx, PinchContext{})
 }
 
-func (s *Scene) fireDrag(node *Node, pointerID int, wx, wy, startX, startY, deltaX, deltaY float64, button MouseButton, mods KeyModifiers) {
+func (s *Scene) fireDrag(node *Node, pointerID int, wx, wy, startX, startY, deltaX, deltaY, screenDX, screenDY float64, button MouseButton, mods KeyModifiers) {
 	var lx, ly float64
 	var entityID uint32
 	var userData any
@@ -855,6 +884,7 @@ func (s *Scene) fireDrag(node *Node, pointerID int, wx, wy, startX, startY, delt
 		Node: node, EntityID: entityID, UserData: userData,
 		GlobalX: wx, GlobalY: wy, LocalX: lx, LocalY: ly,
 		StartX: startX, StartY: startY, DeltaX: deltaX, DeltaY: deltaY,
+		ScreenDeltaX: screenDX, ScreenDeltaY: screenDY,
 		Button: button, PointerID: pointerID, Modifiers: mods,
 	}
 	for _, h := range s.handlers.drag {
@@ -866,7 +896,7 @@ func (s *Scene) fireDrag(node *Node, pointerID int, wx, wy, startX, startY, delt
 	s.emitInteractionEvent(EventDrag, node, wx, wy, lx, ly, button, mods, ctx, PinchContext{})
 }
 
-func (s *Scene) fireDragEnd(node *Node, pointerID int, wx, wy, startX, startY, deltaX, deltaY float64, button MouseButton, mods KeyModifiers) {
+func (s *Scene) fireDragEnd(node *Node, pointerID int, wx, wy, startX, startY, deltaX, deltaY, screenDX, screenDY float64, button MouseButton, mods KeyModifiers) {
 	var lx, ly float64
 	var entityID uint32
 	var userData any
@@ -879,6 +909,7 @@ func (s *Scene) fireDragEnd(node *Node, pointerID int, wx, wy, startX, startY, d
 		Node: node, EntityID: entityID, UserData: userData,
 		GlobalX: wx, GlobalY: wy, LocalX: lx, LocalY: ly,
 		StartX: startX, StartY: startY, DeltaX: deltaX, DeltaY: deltaY,
+		ScreenDeltaX: screenDX, ScreenDeltaY: screenDY,
 		Button: button, PointerID: pointerID, Modifiers: mods,
 	}
 	for _, h := range s.handlers.dragEnd {
@@ -924,21 +955,23 @@ func (s *Scene) emitInteractionEvent(eventType EventType, node *Node, wx, wy, lx
 		entityID = node.EntityID
 	}
 	s.store.EmitEvent(InteractionEvent{
-		Type:       eventType,
-		EntityID:   entityID,
-		GlobalX:    wx,
-		GlobalY:    wy,
-		LocalX:     lx,
-		LocalY:     ly,
-		Button:     button,
-		Modifiers:  mods,
-		StartX:     drag.StartX,
-		StartY:     drag.StartY,
-		DeltaX:     drag.DeltaX,
-		DeltaY:     drag.DeltaY,
-		Scale:      pinch.Scale,
-		ScaleDelta: pinch.ScaleDelta,
-		Rotation:   pinch.Rotation,
-		RotDelta:   pinch.RotDelta,
+		Type:         eventType,
+		EntityID:     entityID,
+		GlobalX:      wx,
+		GlobalY:      wy,
+		LocalX:       lx,
+		LocalY:       ly,
+		Button:       button,
+		Modifiers:    mods,
+		StartX:       drag.StartX,
+		StartY:       drag.StartY,
+		DeltaX:       drag.DeltaX,
+		DeltaY:       drag.DeltaY,
+		ScreenDeltaX: drag.ScreenDeltaX,
+		ScreenDeltaY: drag.ScreenDeltaY,
+		Scale:        pinch.Scale,
+		ScaleDelta:   pinch.ScaleDelta,
+		Rotation:     pinch.Rotation,
+		RotDelta:     pinch.RotDelta,
 	})
 }

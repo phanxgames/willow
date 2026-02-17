@@ -30,21 +30,37 @@ type particle struct {
 
 // EmitterConfig controls how particles are spawned and behave.
 type EmitterConfig struct {
+	// MaxParticles is the pool size. New particles are silently dropped when full.
 	MaxParticles int
-	EmitRate     float64 // particles per second
-	Lifetime     Range
-	Speed        Range
-	Angle        Range   // emission angle in radians
-	StartScale   Range
-	EndScale     Range
-	StartAlpha   Range
-	EndAlpha     Range
-	Gravity      Vec2
-	StartColor   Color
-	EndColor     Color
-	Region       TextureRegion
-	BlendMode    BlendMode
-	WorldSpace   bool // when true, particles keep world position once emitted
+	// EmitRate is the number of particles spawned per second.
+	EmitRate float64
+	// Lifetime is the range of particle lifetimes in seconds.
+	Lifetime Range
+	// Speed is the range of initial particle speeds in pixels per second.
+	Speed Range
+	// Angle is the range of emission angles in radians.
+	Angle Range
+	// StartScale is the range of scale factors at birth, interpolated to EndScale over lifetime.
+	StartScale Range
+	// EndScale is the range of scale factors at death.
+	EndScale Range
+	// StartAlpha is the range of alpha values at birth, interpolated to EndAlpha over lifetime.
+	StartAlpha Range
+	// EndAlpha is the range of alpha values at death.
+	EndAlpha Range
+	// Gravity is the constant acceleration applied to all particles each frame.
+	Gravity Vec2
+	// StartColor is the tint at birth, interpolated to EndColor over lifetime.
+	StartColor Color
+	// EndColor is the tint at death.
+	EndColor Color
+	// Region is the TextureRegion used to render each particle.
+	Region TextureRegion
+	// BlendMode is the compositing operation for particle rendering.
+	BlendMode BlendMode
+	// WorldSpace, when true, causes particles to keep their world position
+	// once emitted rather than following the emitter node.
+	WorldSpace bool
 }
 
 // ParticleEmitter manages a pool of particles with CPU-based simulation.

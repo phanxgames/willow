@@ -401,7 +401,7 @@ func TestPointerCapture(t *testing.T) {
 	s.OnPointerDown(func(ctx PointerContext) {
 		receivedNode = ctx.Node
 	})
-	s.processPointer(0, 50, 50, true, MouseButtonLeft, 0)
+	s.processPointer(0, 50, 50, 50, 50, true, MouseButtonLeft, 0)
 	if receivedNode != b {
 		t.Errorf("expected captured node b, got %v", receivedNode)
 	}
@@ -428,30 +428,30 @@ func TestDragDetection(t *testing.T) {
 	s.OnDragEnd(func(ctx DragContext) { events = append(events, "dragend") })
 
 	// Press at (50, 50).
-	s.processPointer(0, 50, 50, true, MouseButtonLeft, 0)
+	s.processPointer(0, 50, 50, 50, 50, true, MouseButtonLeft, 0)
 
 	// Move within dead zone — no drag.
-	s.processPointer(0, 52, 52, true, MouseButtonLeft, 0)
+	s.processPointer(0, 52, 52, 52, 52, true, MouseButtonLeft, 0)
 	if len(events) != 0 {
 		t.Fatalf("expected no events within dead zone, got %v", events)
 	}
 
 	// Move beyond dead zone.
-	s.processPointer(0, 60, 50, true, MouseButtonLeft, 0)
+	s.processPointer(0, 60, 50, 60, 50, true, MouseButtonLeft, 0)
 	if len(events) != 2 || events[0] != "dragstart" || events[1] != "drag" {
 		t.Fatalf("expected [dragstart drag], got %v", events)
 	}
 
 	// Continue dragging.
 	events = events[:0]
-	s.processPointer(0, 70, 50, true, MouseButtonLeft, 0)
+	s.processPointer(0, 70, 50, 70, 50, true, MouseButtonLeft, 0)
 	if len(events) != 1 || events[0] != "drag" {
 		t.Fatalf("expected [drag], got %v", events)
 	}
 
 	// Release.
 	events = events[:0]
-	s.processPointer(0, 70, 50, false, MouseButtonLeft, 0)
+	s.processPointer(0, 70, 50, 70, 50, false, MouseButtonLeft, 0)
 	if len(events) != 1 || events[0] != "dragend" {
 		t.Fatalf("expected [dragend], got %v", events)
 	}
@@ -473,8 +473,8 @@ func TestClickDetection(t *testing.T) {
 	})
 
 	// Press and release at same location within dead zone.
-	s.processPointer(0, 50, 50, true, MouseButtonLeft, 0)
-	s.processPointer(0, 50, 50, false, MouseButtonLeft, 0)
+	s.processPointer(0, 50, 50, 50, 50, true, MouseButtonLeft, 0)
+	s.processPointer(0, 50, 50, 50, 50, false, MouseButtonLeft, 0)
 	if !clicked {
 		t.Error("expected click event")
 	}
@@ -491,9 +491,9 @@ func TestClickNotFiredOnDrag(t *testing.T) {
 	s.OnClick(func(ctx ClickContext) { clicked = true })
 
 	// Press, drag beyond dead zone, release.
-	s.processPointer(0, 50, 50, true, MouseButtonLeft, 0)
-	s.processPointer(0, 60, 50, true, MouseButtonLeft, 0)
-	s.processPointer(0, 60, 50, false, MouseButtonLeft, 0)
+	s.processPointer(0, 50, 50, 50, 50, true, MouseButtonLeft, 0)
+	s.processPointer(0, 60, 50, 60, 50, true, MouseButtonLeft, 0)
+	s.processPointer(0, 60, 50, 60, 50, false, MouseButtonLeft, 0)
 	if clicked {
 		t.Error("click should not fire after drag")
 	}
@@ -515,8 +515,8 @@ func TestClickNotFiredOnDifferentNode(t *testing.T) {
 	s.OnClick(func(ctx ClickContext) { clicked = true })
 
 	// Press on a, release on b (within dead zone distance but different node).
-	s.processPointer(0, 25, 50, true, MouseButtonLeft, 0)
-	s.processPointer(0, 75, 50, false, MouseButtonLeft, 0)
+	s.processPointer(0, 25, 50, 25, 50, true, MouseButtonLeft, 0)
+	s.processPointer(0, 75, 50, 75, 50, false, MouseButtonLeft, 0)
 	if clicked {
 		t.Error("click should not fire when press and release are on different nodes")
 	}
@@ -561,15 +561,15 @@ func TestSetDragDeadZone(t *testing.T) {
 	s.OnDragStart(func(ctx DragContext) { dragStarted = true })
 
 	// Press.
-	s.processPointer(0, 50, 50, true, MouseButtonLeft, 0)
+	s.processPointer(0, 50, 50, 50, 50, true, MouseButtonLeft, 0)
 	// Move 10 pixels — should NOT start drag with 20px dead zone.
-	s.processPointer(0, 60, 50, true, MouseButtonLeft, 0)
+	s.processPointer(0, 60, 50, 60, 50, true, MouseButtonLeft, 0)
 	if dragStarted {
 		t.Error("drag should not start within 20px dead zone")
 	}
 
 	// Move 25 pixels from start — should start drag.
-	s.processPointer(0, 75, 50, true, MouseButtonLeft, 0)
+	s.processPointer(0, 75, 50, 75, 50, true, MouseButtonLeft, 0)
 	if !dragStarted {
 		t.Error("drag should start beyond 20px dead zone")
 	}
@@ -671,7 +671,7 @@ func TestECSBridge_DragFields(t *testing.T) {
 		StartX: 10, StartY: 20,
 		DeltaX: 5, DeltaY: -3,
 	}
-	s.fireDrag(sprite, 0, 50, 60, ctx.StartX, ctx.StartY, ctx.DeltaX, ctx.DeltaY, MouseButtonLeft, ModShift)
+	s.fireDrag(sprite, 0, 50, 60, ctx.StartX, ctx.StartY, ctx.DeltaX, ctx.DeltaY, 0, 0, MouseButtonLeft, ModShift)
 
 	if len(store.events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(store.events))
@@ -796,9 +796,9 @@ func TestECSBridge_NoStore(t *testing.T) {
 
 	s.firePointerDown(sprite, 0, 50, 50, MouseButtonLeft, 0)
 	s.fireClick(sprite, 0, 50, 50, MouseButtonLeft, 0)
-	s.fireDragStart(sprite, 0, 50, 50, 50, 50, 0, 0, MouseButtonLeft, 0)
-	s.fireDrag(sprite, 0, 60, 60, 50, 50, 10, 10, MouseButtonLeft, 0)
-	s.fireDragEnd(sprite, 0, 60, 60, 50, 50, 10, 10, MouseButtonLeft, 0)
+	s.fireDragStart(sprite, 0, 50, 50, 50, 50, 0, 0, 0, 0, MouseButtonLeft, 0)
+	s.fireDrag(sprite, 0, 60, 60, 50, 50, 10, 10, 10, 10, MouseButtonLeft, 0)
+	s.fireDragEnd(sprite, 0, 60, 60, 50, 50, 10, 10, 10, 10, MouseButtonLeft, 0)
 	s.firePinch(PinchContext{Scale: 1.0}, 0)
 	// If we reach here without panic, test passes.
 }
@@ -846,7 +846,7 @@ func TestHoverMove(t *testing.T) {
 	})
 
 	// Hover (not pressed) with position change.
-	s.processPointer(0, 50, 50, false, MouseButtonLeft, 0)
+	s.processPointer(0, 50, 50, 50, 50, false, MouseButtonLeft, 0)
 	if !moveCalled {
 		t.Error("pointer move callback not fired on hover")
 	}
@@ -910,8 +910,8 @@ func TestAutoReleaseCapture(t *testing.T) {
 	}
 
 	// Press and release.
-	s.processPointer(0, 50, 50, true, MouseButtonLeft, 0)
-	s.processPointer(0, 50, 50, false, MouseButtonLeft, 0)
+	s.processPointer(0, 50, 50, 50, 50, true, MouseButtonLeft, 0)
+	s.processPointer(0, 50, 50, 50, 50, false, MouseButtonLeft, 0)
 
 	if s.captured[0] != nil {
 		t.Error("capture should be auto-released on pointer up")
@@ -940,7 +940,7 @@ func BenchmarkHitTest_1000Nodes(b *testing.B) {
 	for i := 0; i < 1000; i++ {
 		n := NewSprite("n", TextureRegion{OriginalW: 10, OriginalH: 10})
 		n.Interactable = true
-		n.X = float64(i % 100) * 12
+		n.X = float64(i%100) * 12
 		n.Y = float64(i/100) * 12
 		s.Root().AddChild(n)
 	}
