@@ -66,7 +66,8 @@ func main() {
 	}
 
 	// Camera panning via OnDrag with screen-space deltas.
-	scene.Root().HitShape = willow.HitRect{Width: 1e6, Height: 1e6}
+	scene.SetDragDeadZone(0)
+	scene.Root().HitShape = willow.HitRect{X: -1e6, Y: -1e6, Width: 2e6, Height: 2e6}
 	scene.Root().OnDrag = func(ctx willow.DragContext) {
 		cam.X -= ctx.ScreenDeltaX / cam.Zoom
 		cam.Y -= ctx.ScreenDeltaY / cam.Zoom

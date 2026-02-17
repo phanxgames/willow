@@ -256,7 +256,7 @@ func (s *Scene) drawWithCamera(target *ebiten.Image, cam *Camera) {
 		viewTransform = cam.computeViewMatrix()
 		s.cullActive = cam.CullEnabled
 		if cam.CullEnabled {
-			s.cullBounds = cam.VisibleBounds()
+			s.cullBounds = cam.Viewport
 		}
 	} else {
 		viewTransform = identityTransform
