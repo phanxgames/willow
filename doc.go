@@ -21,6 +21,8 @@
 // each tick:
 //
 //	scene.SetUpdateFunc(func() error {
+//		dt := float32(1.0 / float64(ebiten.TPS()))
+//		myTween.Update(dt)
 //		hero.X += speed
 //		hero.MarkDirty()
 //		return nil

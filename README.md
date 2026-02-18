@@ -109,6 +109,7 @@ go run ./examples/shaders      # 3x3 grid showcasing all built-in shader filters
 go run ./examples/outline      # Outline and inline filters on a sprite
 go run ./examples/masks        # Star polygon, cursor-following, and erase masking
 go run ./examples/lighting     # Dark dungeon with colored torches and mouse-following lantern
+go run ./examples/atlas        # TexturePacker atlas loading with named regions and magenta placeholders
 go run ./examples/tilemap      # Tile map rendering with camera panning
 go run ./examples/rope         # Draggable endpoints connected by a textured rope
 go run ./examples/watermesh    # Water surface with per-vertex wave animation
