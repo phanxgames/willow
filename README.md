@@ -48,11 +48,10 @@ Inspired by [Starling](https://gamua.com/starling/), Flash display lists, and [P
 ## Goals
 
 1. **Structure without handcuffs.** Willow provides hierarchy, transforms, and batching. It does not impose game architecture. Any genre, any pattern, any scale.
-2. **Transparent, not magical.** No hidden state, no implicit systems, no reflection in hot paths. You can always see what Willow is doing and why.
-3. **Performance as a contract.** Zero heap allocations per frame on the hot path. 10,000 sprites at 120+ FPS on desktop, 60+ FPS on mobile and web. Verified with compiler escape analysis and benchmark suites.
-4. **Wrap Ebitengine, never fight it.** Willow uses Ebitengine's draw calls, image types, and threading model directly.
-5. **No genre bias.** Willow is for any 2D project - games, tools, visualizations, simulations.
-6. **Minimal public API.** Every exported symbol earns its place. Fewer concepts, less to learn, less to break.
+2. **Performance as a contract.** Zero heap allocations per frame on the hot path. 10,000 sprites at 120+ FPS on desktop, 60+ FPS on mobile and web. Verified with compiler escape analysis and benchmark suites.
+3. **Wrap Ebitengine, never fight it.** Willow uses Ebitengine's draw calls, image types, and threading model directly.
+4. **No genre bias.** Willow is for any 2D project - games, tools, visualizations, simulations.
+5. **Minimal public API.** Every exported symbol earns its place. Fewer concepts, less to learn, less to break.
 
 ---
 
