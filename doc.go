@@ -236,6 +236,29 @@
 // control, [Node.RenderLayer] provides a primary sort key across the
 // entire scene.
 //
+// # Lighting
+//
+// A [LightLayer] creates a dark overlay with soft circles of light cut
+// through it. Add the layer as the topmost scene node so it composites
+// over all content:
+//
+//	ll := willow.NewLightLayer(640, 480, 0.9) // ambientAlpha: 1=black, 0=fully lit
+//	scene.Root().AddChild(ll.Node())
+//
+// Add point lights with [LightLayer.AddLight]:
+//
+//	torch := &willow.Light{
+//		X: 200, Y: 300,
+//		Radius: 120, Intensity: 1.0,
+//		Color:   willow.Color{R: 1, G: 0.7, B: 0.3, A: 1},
+//		Enabled: true,
+//	}
+//	ll.AddLight(torch)
+//
+// To attach a light to a moving node, set [Light.Target] instead of
+// fixed X/Y coordinates. Call [LightLayer.Redraw] each frame to
+// rebuild the light texture before [Scene.Draw].
+//
 // # ECS integration
 //
 // Set a node's [Node.EntityID] and call [Scene.SetEntityStore] with an
