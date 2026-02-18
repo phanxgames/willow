@@ -307,6 +307,11 @@ func NewParticleEmitter(name string, cfg EmitterConfig) *Node {
 		Emitter:       emitter,
 	}
 	nodeDefaults(n)
+	// If no region is specified (zero value), default to WhitePixel so particles
+	// render as solid-color quads without needing an atlas.
+	if cfg.Region == (TextureRegion{}) {
+		n.customImage = WhitePixel
+	}
 	return n
 }
 

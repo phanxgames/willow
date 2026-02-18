@@ -129,25 +129,29 @@ func (s *Scene) submitParticles(target *ebiten.Image, cmd *RenderCommand, op *eb
 
 	r := &cmd.TextureRegion
 
-	// Resolve the atlas page image.
-	var page *ebiten.Image
-	if r.Page == magentaPlaceholderPage {
-		page = ensureMagentaImage()
-	} else if int(r.Page) < len(s.pages) {
-		page = s.pages[r.Page]
-	}
-	if page == nil {
-		return
-	}
-
-	// Compute SubImage rect.
-	var subRect image.Rectangle
-	if r.Rotated {
-		subRect = image.Rect(int(r.X), int(r.Y), int(r.X)+int(r.Height), int(r.Y)+int(r.Width))
+	// Resolve the particle texture. A directImage (e.g. WhitePixel) takes
+	// priority; otherwise fall back to an atlas page.
+	var subImg *ebiten.Image
+	if cmd.directImage != nil {
+		subImg = cmd.directImage
 	} else {
-		subRect = image.Rect(int(r.X), int(r.Y), int(r.X)+int(r.Width), int(r.Y)+int(r.Height))
+		var page *ebiten.Image
+		if r.Page == magentaPlaceholderPage {
+			page = ensureMagentaImage()
+		} else if int(r.Page) < len(s.pages) {
+			page = s.pages[r.Page]
+		}
+		if page == nil {
+			return
+		}
+		var subRect image.Rectangle
+		if r.Rotated {
+			subRect = image.Rect(int(r.X), int(r.Y), int(r.X)+int(r.Height), int(r.Y)+int(r.Width))
+		} else {
+			subRect = image.Rect(int(r.X), int(r.Y), int(r.X)+int(r.Width), int(r.Y)+int(r.Height))
+		}
+		subImg = page.SubImage(subRect).(*ebiten.Image)
 	}
-	subImg := page.SubImage(subRect).(*ebiten.Image)
 
 	// Transform for positioning: world transform for attached, view-only for world-space.
 	baseGeoM := commandGeoM(cmd)

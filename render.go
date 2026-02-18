@@ -11,8 +11,8 @@ type CommandType uint8
 
 const (
 	CommandSprite   CommandType = iota // DrawImage
-	CommandMesh                       // DrawTriangles
-	CommandParticle                   // particle quads (batches as sprites)
+	CommandMesh                        // DrawTriangles
+	CommandParticle                    // particle quads (batches as sprites)
 )
 
 // RenderCommand is a single draw instruction emitted during scene traversal.
@@ -121,6 +121,7 @@ func (s *Scene) traverse(n *Node, parentTransform [6]float64, parentAlpha float6
 					Type:               CommandParticle,
 					Transform:          particleTransform,
 					TextureRegion:      n.TextureRegion,
+					directImage:        n.customImage,
 					Color:              Color{n.Color.R, n.Color.G, n.Color.B, n.Color.A * n.worldAlpha},
 					BlendMode:          n.BlendMode,
 					RenderLayer:        n.RenderLayer,
@@ -139,7 +140,7 @@ func (s *Scene) traverse(n *Node, parentTransform [6]float64, parentAlpha float6
 					s.commands, s.pages = emitTTFTextCommand(n.TextBlock, n, s.commands, treeOrder, s.pages, &s.nextPage)
 				}
 			}
-		// NodeTypeContainer doesn't emit commands
+			// NodeTypeContainer doesn't emit commands
 		}
 	}
 
