@@ -34,6 +34,16 @@ type Light struct {
 	OffsetY float64
 }
 
+// lightDrawInfo caches the resolved image and computed GeoM for a single light
+// between the erase and tint passes in Redraw, so neither needs to be computed
+// twice per colored light.
+type lightDrawInfo struct {
+	img       *ebiten.Image
+	geoM      ebiten.GeoM
+	intensity float32
+	hasColor  bool
+}
+
 // LightLayer provides a convenient 2D lighting effect using erase blending.
 // It manages a set of lights, renders them into an offscreen texture filled
 // with an ambient darkness color, and erases feathered circles at each light
@@ -47,6 +57,9 @@ type LightLayer struct {
 	ambientAlpha float64
 	circleCache  map[int]*ebiten.Image // cached circle textures keyed by quantized radius
 	imgOp        ebiten.DrawImageOptions
+	drawScratch  []lightDrawInfo // pre-allocated cache shared between erase and tint passes
+	eraseBlend   ebiten.Blend    // precomputed once; avoids a method call per light
+	addBlend     ebiten.Blend    // precomputed once
 }
 
 // NewLightLayer creates a light layer covering (w x h) pixels.
@@ -60,6 +73,8 @@ func NewLightLayer(w, h int, ambientAlpha float64) *LightLayer {
 		rt:           rt,
 		node:         node,
 		ambientAlpha: ambientAlpha,
+		eraseBlend:   BlendErase.EbitenBlend(),
+		addBlend:     BlendAdd.EbitenBlend(),
 	}
 	return ll
 }
@@ -141,9 +156,9 @@ func (ll *LightLayer) getCircle(radius float64) *ebiten.Image {
 	return img
 }
 
-// Redraw clears the texture, fills it with ambient darkness, and erases
-// light shapes at each enabled light position. Lights with a TextureRegion
-// use that sprite; lights without fall back to a generated feathered circle.
+// Redraw fills the texture with ambient darkness then erases light shapes at
+// each enabled light position. Lights with a TextureRegion use that sprite;
+// lights without fall back to a generated feathered circle.
 // Call this every frame (or whenever lights change) before drawing the scene.
 func (ll *LightLayer) Redraw() {
 	// Sync attached lights to their target node positions.
@@ -160,48 +175,74 @@ func (ll *LightLayer) Redraw() {
 	}
 
 	target := ll.rt.Image()
-	target.Clear()
 
-	// Fill with ambient darkness.
+	// Fill with ambient darkness. Fill overwrites every pixel, so a prior
+	// Clear() call would be redundant and is omitted.
 	a := clamp01(ll.ambientAlpha)
 	target.Fill(color.NRGBA{R: 0, G: 0, B: 0, A: uint8(a * 255)})
 
+	// Grow the per-light scratch slice without allocating after warmup.
+	n := len(ll.lights)
+	if cap(ll.drawScratch) < n {
+		ll.drawScratch = make([]lightDrawInfo, n)
+	} else {
+		ll.drawScratch = ll.drawScratch[:n]
+	}
+
 	op := &ll.imgOp
-	for _, l := range ll.lights {
+
+	// ---- Erase pass ---------------------------------------------------------
+	// All erase draws are issued before all tint draws so that Ebitengine can
+	// batch consecutive calls that share the same source image and blend mode
+	// into a single GPU draw call. The interleaved layout used previously
+	// (erase₀, tint₀, erase₁, tint₁, …) prevented any batching.
+	for i, l := range ll.lights {
+		info := &ll.drawScratch[i]
+		info.img = nil // sentinel: skip this light in the tint pass
 		if !l.Enabled || l.Radius <= 0 {
 			continue
 		}
-
-		intensity := clamp01(l.Intensity)
-
-		// Resolve the light image: TextureRegion or fallback circle.
-		lightImg, srcW, srcH := ll.resolveLightImage(l)
-		if lightImg == nil {
+		img, srcW, srcH := ll.resolveLightImage(l)
+		if img == nil {
 			continue
 		}
-
-		// Erase pass: punch a hole in the darkness.
+		intensity := clamp01(l.Intensity)
 		ll.setupLightGeoM(op, l, srcW, srcH)
-		op.ColorScale.Reset()
-		op.ColorScale.Scale(float32(intensity), float32(intensity), float32(intensity), float32(intensity))
-		op.Blend = BlendErase.EbitenBlend()
-		target.DrawImage(lightImg, op)
 
-		// Color tint pass: additive tint if the light has a non-white/non-zero color.
+		// Cache resolved image, GeoM, and intensity for the tint pass so we
+		// avoid a second resolveLightImage call and a second GeoM computation.
+		info.img = img
+		info.geoM = op.GeoM
+		info.intensity = float32(intensity)
 		c := l.Color
-		if c != (Color{}) && c != ColorWhite {
-			ll.setupLightGeoM(op, l, srcW, srcH)
-			op.ColorScale.Reset()
-			tintAlpha := float32(intensity * 0.3)
-			op.ColorScale.Scale(
-				float32(c.R)*tintAlpha,
-				float32(c.G)*tintAlpha,
-				float32(c.B)*tintAlpha,
-				tintAlpha,
-			)
-			op.Blend = BlendAdd.EbitenBlend()
-			target.DrawImage(lightImg, op)
+		info.hasColor = c != (Color{}) && c != ColorWhite
+
+		op.ColorScale.Reset()
+		op.ColorScale.Scale(info.intensity, info.intensity, info.intensity, info.intensity)
+		op.Blend = ll.eraseBlend
+		target.DrawImage(img, op)
+	}
+
+	// ---- Tint pass ----------------------------------------------------------
+	// Reuses the image and GeoM cached above; no second resolveLightImage or
+	// setupLightGeoM call is needed.
+	for i, l := range ll.lights {
+		info := &ll.drawScratch[i]
+		if info.img == nil || !info.hasColor {
+			continue
 		}
+		c := l.Color
+		op.GeoM = info.geoM
+		op.ColorScale.Reset()
+		tintAlpha := info.intensity * 0.3
+		op.ColorScale.Scale(
+			float32(c.R)*tintAlpha,
+			float32(c.G)*tintAlpha,
+			float32(c.B)*tintAlpha,
+			tintAlpha,
+		)
+		op.Blend = ll.addBlend
+		target.DrawImage(info.img, op)
 	}
 }
 
