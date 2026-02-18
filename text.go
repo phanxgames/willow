@@ -58,9 +58,10 @@ type TextBlock struct {
 	wordGlyphs  []glyphPos // preallocated word buffer for layoutBitmap
 
 	// TTF rendering cache (unexported)
-	ttfImage *ebiten.Image // cached rendered TTF text
-	ttfPage  int           // page index where ttfImage is registered (-1 = unset)
-	ttfDirty bool          // true when TTF cache needs re-render
+	ttfImage   *ebiten.Image // cached rendered TTF text
+	ttfPage    int           // page index where ttfImage is registered (-1 = unset)
+	ttfDirty   bool          // true when TTF cache needs re-render
+	ttfWrapped string        // content with word-wrap newlines injected
 }
 
 // textLine stores one line of laid-out glyphs.
@@ -74,6 +75,14 @@ type glyphPos struct {
 	x, y   float64
 	region TextureRegion
 	page   uint16
+}
+
+// MarkDirty invalidates the cached layout and TTF image, forcing recomputation
+// on the next frame. Call this after changing Content, Font, WrapWidth, Align,
+// LineHeight, Color, or Outline at runtime.
+func (tb *TextBlock) MarkDirty() {
+	tb.layoutDirty = true
+	tb.ttfDirty = true
 }
 
 // lineHeight returns the effective line height for this text block.
@@ -271,11 +280,50 @@ func (tb *TextBlock) layoutBitmap(f *BitmapFont) {
 	tb.measuredH = float64(len(tb.lines)) * lh
 }
 
-// layoutTTF computes measured dimensions for a TTFFont. TTF text doesn't use
-// per-glyph sprite commands — it renders to a temporary image as a unit.
+// layoutTTF computes measured dimensions for a TTFFont, applying word wrapping
+// when WrapWidth > 0. The wrapped content (with injected newlines) is stored in
+// ttfWrapped for use by emitTTFTextCommand. TTF text renders as a single cached
+// image rather than per-glyph sprite commands.
 func (tb *TextBlock) layoutTTF(f *TTFFont) {
 	tb.lines = tb.lines[:0]
-	w, h := f.MeasureString(tb.Content)
+
+	if tb.WrapWidth <= 0 {
+		tb.ttfWrapped = tb.Content
+		w, h := f.MeasureString(tb.Content)
+		tb.measuredW = w
+		tb.measuredH = h
+		return
+	}
+
+	// Word-wrap: split each paragraph into lines that fit within WrapWidth.
+	var out strings.Builder
+	paragraphs := strings.Split(tb.Content, "\n")
+	for pi, para := range paragraphs {
+		if pi > 0 {
+			out.WriteByte('\n')
+		}
+		words := strings.Fields(para)
+		if len(words) == 0 {
+			continue
+		}
+		lineStart := 0
+		for i := range words {
+			candidate := strings.Join(words[lineStart:i+1], " ")
+			cw, _ := f.MeasureString(candidate)
+			if cw > tb.WrapWidth && i > lineStart {
+				// Flush accumulated line without the current word.
+				out.WriteString(strings.Join(words[lineStart:i], " "))
+				out.WriteByte('\n')
+				lineStart = i
+			}
+		}
+		// Flush remaining words on the last line.
+		out.WriteString(strings.Join(words[lineStart:], " "))
+	}
+
+	wrapped := out.String()
+	tb.ttfWrapped = wrapped
+	w, h := f.MeasureString(wrapped)
 	tb.measuredW = w
 	tb.measuredH = h
 }
@@ -704,7 +752,7 @@ func emitTTFTextCommand(tb *TextBlock, n *Node, commands []RenderCommand, treeOr
 			float32(tb.Color.A),
 		)
 		op.LineSpacing = f.lh
-		text.Draw(tb.ttfImage, tb.Content, f.face, op)
+		text.Draw(tb.ttfImage, tb.ttfWrapped, f.face, op)
 
 		// Allocate a page slot once, reuse on subsequent renders
 		if tb.ttfPage < 0 {
@@ -717,10 +765,25 @@ func emitTTFTextCommand(tb *TextBlock, n *Node, commands []RenderCommand, treeOr
 		pages[tb.ttfPage] = tb.ttfImage
 	}
 
+	// Apply horizontal alignment offset within WrapWidth.
+	transform := n.worldTransform
+	if tb.WrapWidth > 0 {
+		var offsetX float64
+		switch tb.Align {
+		case TextAlignCenter:
+			offsetX = (tb.WrapWidth - tb.measuredW) / 2
+		case TextAlignRight:
+			offsetX = tb.WrapWidth - tb.measuredW
+		}
+		if offsetX != 0 {
+			transform = composeGlyphTransform(n.worldTransform, offsetX, 0)
+		}
+	}
+
 	*treeOrder++
 	commands = append(commands, RenderCommand{
 		Type:      CommandSprite,
-		Transform: n.worldTransform,
+		Transform: transform,
 		TextureRegion: TextureRegion{
 			Page:      uint16(tb.ttfPage),
 			X:         0,
