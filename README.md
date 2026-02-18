@@ -10,7 +10,7 @@ A retained-mode 2D scene graph, interaction layer, and render compiler for [Ebit
   <img src="examples/_assets/gif/shapes.gif" alt="Shapes demo" width="400">
   <img src="examples/_assets/gif/tweens.gif" alt="Tweens demo" width="400">
   <img src="examples/_assets/gif/shaders.gif" alt="Shaders demo" width="400">
-  <img src="examples/_assets/gif/tilemap.gif" alt="Tilemap demo" width="400">
+  <img src="examples/_assets/gif/watermesh.gif" alt="Watermesh demo" width="400">
 </p>
 
 > **New here?** Check out the [examples](examples/) — runnable demos with no external assets required.
@@ -106,6 +106,7 @@ go run ./examples/tweens       # Position, scale, rotation, alpha, and color twe
 go run ./examples/shaders      # 3x3 grid showcasing all built-in shader filters
 go run ./examples/outline      # Outline and inline filters on a sprite
 go run ./examples/tilemap      # Tile map rendering with camera panning
+go run ./examples/watermesh   # Water surface with per-vertex wave animation
 ```
 
 ---
@@ -130,42 +131,6 @@ Full API documentation is available on [pkg.go.dev](https://pkg.go.dev/github.co
 - **Animation** - Tweening via [gween](https://github.com/tanema/gween) with 45+ easing functions. Convenience wrappers for position, scale, rotation, alpha, and color. Auto-stops on node disposal.
 - **ECS integration** - Optional `EntityStore` interface to bridge interaction events into your ECS. Ships with a [Donburi](https://github.com/yohamta/donburi) adapter.
 - **Debug mode** - Performance timers, draw call and batch counting, tree depth warnings, and disposed-node assertions via `scene.SetDebugMode(true)`.
-
----
-
-## Architecture
-
-```
-Your Game (ebiten.Game)
-    │
-    ▼
-┌────────────────────────────────┐
-│  Scene                         │
-│  ├─ Update(): input → events   │
-│  └─ Draw():  traverse → sort   │
-│              → batch → submit  │
-└────────────────────────────────┘
-    │
-    ▼
-┌────────────────────────────────┐
-│  Node tree                     │
-│  Container ─┬─ Sprite          │
-│             ├─ Sprite          │
-│             ├─ Text            │
-│             ├─ ParticleEmitter │
-│             └─ Container ──…   │
-└────────────────────────────────┘
-    │
-    ▼
-┌────────────────────────────────┐
-│  Ebitengine                    │
-│  DrawImage / DrawTriangles     │
-└────────────────────────────────┘
-```
-
-**Rendering:** Depth-first traversal, dirty transform recomputation, camera culling, render command emission, stable sort by layer and order, batch grouping, Ebitengine submission.
-
-**Interaction:** Pointer input processing, hierarchical hit testing in reverse painter order, scene-level callbacks, per-node callbacks, optional ECS event routing.
 
 ---
 
