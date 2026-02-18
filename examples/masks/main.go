@@ -111,25 +111,35 @@ func main() {
 	maskRoot0.AddChild(starShape)
 	p0.SetMask(maskRoot0)
 
-	scene.Root().AddChild(p0)
+	// Clip container: rect mask hard-clips the entire panel to its bounds.
+	clip0 := willow.NewContainer("clip-0")
+	clip0Rect := willow.NewPolygon("clip-rect-0", []willow.Vec2{
+		{X: 0, Y: 0}, {X: panelW, Y: 0},
+		{X: panelW, Y: screenH}, {X: 0, Y: screenH},
+	})
+	clip0Rect.Color = willow.Color{R: 1, G: 1, B: 1, A: 1}
+	clip0.SetMask(clip0Rect)
+	clip0.AddChild(p0)
+	scene.Root().AddChild(clip0)
 	d.starShape = starShape
 
 	// ── Panel 1: whelp-alpha mask over bold stripes, follows cursor ───────────
 	// Container at world (panelW, 0); content fills local (0,0)→(panelW,screenH).
 
 	p1 := willow.NewContainer("cursor-panel")
-	p1.X = panelW // 300
+	// p1.X = 0 — clip1 carries the panelW world offset.
 
 	// Eight bold horizontal rainbow stripes filling the full panel height.
+	// Warm palette: crimson → red → orange-red → orange → amber → gold → tan → sienna.
 	stripeColors := []willow.Color{
-		{R: 1.00, G: 0.20, B: 0.20, A: 1},
-		{R: 1.00, G: 0.58, B: 0.08, A: 1},
-		{R: 0.95, G: 0.92, B: 0.08, A: 1},
-		{R: 0.20, G: 0.88, B: 0.28, A: 1},
-		{R: 0.18, G: 0.52, B: 1.00, A: 1},
-		{R: 0.65, G: 0.18, B: 1.00, A: 1},
-		{R: 1.00, G: 0.20, B: 0.70, A: 1},
-		{R: 0.15, G: 0.88, B: 0.85, A: 1},
+		{R: 0.80, G: 0.08, B: 0.05, A: 1},
+		{R: 0.97, G: 0.18, B: 0.08, A: 1},
+		{R: 1.00, G: 0.38, B: 0.04, A: 1},
+		{R: 1.00, G: 0.58, B: 0.00, A: 1},
+		{R: 1.00, G: 0.74, B: 0.00, A: 1},
+		{R: 0.94, G: 0.84, B: 0.04, A: 1},
+		{R: 0.88, G: 0.54, B: 0.18, A: 1},
+		{R: 0.72, G: 0.28, B: 0.10, A: 1},
 	}
 	const stripeH = 60.0
 	for i, c := range stripeColors {
@@ -151,27 +161,38 @@ func main() {
 	maskRoot1.AddChild(whelpChild)
 	p1.SetMask(maskRoot1)
 
-	scene.Root().AddChild(p1)
+	// Clip container: carries the panel's world offset and hard-clips to panel bounds.
+	clip1 := willow.NewContainer("clip-1")
+	clip1.X = panelW // 300
+	clip1Rect := willow.NewPolygon("clip-rect-1", []willow.Vec2{
+		{X: 0, Y: 0}, {X: panelW, Y: 0},
+		{X: panelW, Y: screenH}, {X: 0, Y: screenH},
+	})
+	clip1Rect.Color = willow.Color{R: 1, G: 1, B: 1, A: 1}
+	clip1.SetMask(clip1Rect)
+	clip1.AddChild(p1)
+	scene.Root().AddChild(clip1)
 	d.whelpChild = whelpChild
 
-	// ── Panel 2: full-panel rect mask over smooth-scrolling colour bars ────────
-	// Container at world (panelW*2, 0); content fills local (0,0)→(panelW,screenH).
+	// ── Panel 2: scrolling bars with a static whelp shape erased from them ────
+	// clip2 carries the world offset and hard-clips; p2 holds the erase mask.
 
 	p2 := willow.NewContainer("scroll-panel")
-	p2.X = panelW * 2 // 600
+	// p2.X = 0 — clip2 handles the world offset.
 
 	scrollContent := willow.NewContainer("scroll-content")
 	p2.AddChild(scrollContent)
 
+	// Cool palette: navy → royal blue → sky blue → cyan → teal → indigo → violet → emerald.
 	barColors := []willow.Color{
-		{R: 0.95, G: 0.25, B: 0.25, A: 1},
-		{R: 0.95, G: 0.55, B: 0.10, A: 1},
-		{R: 0.95, G: 0.90, B: 0.10, A: 1},
-		{R: 0.25, G: 0.85, B: 0.30, A: 1},
-		{R: 0.15, G: 0.65, B: 0.95, A: 1},
-		{R: 0.55, G: 0.25, B: 0.95, A: 1},
-		{R: 0.95, G: 0.25, B: 0.75, A: 1},
-		{R: 0.35, G: 0.90, B: 0.85, A: 1},
+		{R: 0.05, G: 0.10, B: 0.62, A: 1},
+		{R: 0.10, G: 0.32, B: 0.88, A: 1},
+		{R: 0.14, G: 0.58, B: 0.94, A: 1},
+		{R: 0.00, G: 0.76, B: 0.86, A: 1},
+		{R: 0.04, G: 0.64, B: 0.58, A: 1},
+		{R: 0.28, G: 0.18, B: 0.80, A: 1},
+		{R: 0.54, G: 0.14, B: 0.84, A: 1},
+		{R: 0.08, G: 0.72, B: 0.42, A: 1},
 	}
 	// Two copies for a seamless loop.
 	const barH = 60.0
@@ -187,17 +208,39 @@ func main() {
 		}
 	}
 
-	// Full-panel rect mask — clips the scrolling content to the panel bounds.
-	rectMask := willow.NewPolygon("rect-mask", []willow.Vec2{
-		{X: 0, Y: 0},
-		{X: panelW, Y: 0},
-		{X: panelW, Y: screenH},
-		{X: 0, Y: screenH},
-	})
-	rectMask.Color = willow.Color{R: 1, G: 1, B: 1, A: 1}
-	p2.SetMask(rectMask)
+	// Erase mask: a white rect (show everything) with the whelp shape stamped out
+	// using BlendErase, so the whelp silhouette punches a permanent hole in the bars.
+	eraseRoot := willow.NewContainer("erase-root")
 
-	scene.Root().AddChild(p2)
+	eraseRect := willow.NewPolygon("erase-rect", []willow.Vec2{
+		{X: 0, Y: 0}, {X: panelW, Y: 0},
+		{X: panelW, Y: screenH}, {X: 0, Y: screenH},
+	})
+	eraseRect.Color = willow.Color{R: 1, G: 1, B: 1, A: 1}
+	eraseRoot.AddChild(eraseRect)
+
+	whelpStatic := willow.NewSprite("whelp-static", willow.TextureRegion{})
+	whelpStatic.SetCustomImage(whelpImg)
+	whelpStatic.ScaleX = 2 // 128 px → 256 px
+	whelpStatic.ScaleY = 2
+	whelpStatic.X = (panelW - 256) / 2        // centred horizontally
+	whelpStatic.Y = (screenH - 256) / 2       // centred vertically
+	whelpStatic.BlendMode = willow.BlendErase // punch the alpha through the white rect
+	eraseRoot.AddChild(whelpStatic)
+
+	p2.SetMask(eraseRoot)
+
+	// Clip container: carries the world offset and hard-clips to panel bounds.
+	clip2 := willow.NewContainer("clip-2")
+	clip2.X = panelW * 2 // 600
+	clip2Rect := willow.NewPolygon("clip-rect-2", []willow.Vec2{
+		{X: 0, Y: 0}, {X: panelW, Y: 0},
+		{X: panelW, Y: screenH}, {X: 0, Y: screenH},
+	})
+	clip2Rect.Color = willow.Color{R: 1, G: 1, B: 1, A: 1}
+	clip2.SetMask(clip2Rect)
+	clip2.AddChild(p2)
+	scene.Root().AddChild(clip2)
 	d.scrollContent = scrollContent
 
 	// ── Dividers ──────────────────────────────────────────────────────────────
@@ -214,7 +257,7 @@ func main() {
 
 	// ── Labels ────────────────────────────────────────────────────────────────
 
-	for i, lbl := range []string{"Star Mask", "Cursor Mask", "Scroll Mask"} {
+	for i, lbl := range []string{"Star Mask", "Cursor Mask", "Erase Mask"} {
 		x := float64(i)*panelW + panelW/2 - float64(len(lbl)*6)/2
 		n := makeLabel(lbl)
 		n.X = x
@@ -223,7 +266,7 @@ func main() {
 		scene.Root().AddChild(n)
 	}
 
-	const hintText = "move cursor over centre panel to stamp the whelp shape"
+	const hintText = "move cursor over centre panel  |  whelp erased from right panel"
 	hint := makeLabel(hintText)
 	hint.X = float64(screenW)/2 - float64(len(hintText)*6)/2
 	hint.Y = float64(screenH) - 18

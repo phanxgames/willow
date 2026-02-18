@@ -489,8 +489,8 @@ func SetPolygonPoints(n *Node, points []Vec2) {
 	n.InvalidateMeshAABB()
 }
 
-// buildPolygonFan generates vertices and indices for a fan-triangulated polygon.
-// N vertices, 3*(N-2) indices.
+// buildPolygonFan generates vertices and indices for an arbitrary simple polygon.
+// Uses ear-clipping triangulation, which handles both convex and concave shapes.
 func buildPolygonFan(points []Vec2, textured bool, img *ebiten.Image) ([]ebiten.Vertex, []uint16) {
 	n := len(points)
 	if n < 3 {
@@ -498,7 +498,7 @@ func buildPolygonFan(points []Vec2, textured bool, img *ebiten.Image) ([]ebiten.
 	}
 
 	verts := make([]ebiten.Vertex, n)
-	inds := make([]uint16, (n-2)*3)
+	inds := earClipIndices(points)
 
 	// Compute bounding box for UV mapping (textured mode).
 	var minX, minY, maxX, maxY float64
@@ -553,12 +553,89 @@ func buildPolygonFan(points []Vec2, textured bool, img *ebiten.Image) ([]ebiten.
 		}
 	}
 
-	// Fan triangulation: vertex 0 is the hub.
-	for i := 0; i < n-2; i++ {
-		inds[i*3+0] = 0
-		inds[i*3+1] = uint16(i + 1)
-		inds[i*3+2] = uint16(i + 2)
+	return verts, inds
+}
+
+// earClipIndices triangulates a simple polygon using ear-clipping.
+// Handles both convex and concave polygons. O(n²) — fine for small polygons.
+func earClipIndices(pts []Vec2) []uint16 {
+	n := len(pts)
+	if n < 3 {
+		return nil
+	}
+	if n == 3 {
+		return []uint16{0, 1, 2}
 	}
 
-	return verts, inds
+	// Signed area determines winding. Positive → convex ears have positive cross.
+	var area float64
+	for i := 0; i < n; i++ {
+		j := (i + 1) % n
+		area += pts[i].X*pts[j].Y - pts[j].X*pts[i].Y
+	}
+	ccw := area > 0
+
+	idx := make([]int, n)
+	for i := range idx {
+		idx[i] = i
+	}
+
+	result := make([]uint16, 0, (n-2)*3)
+	for len(idx) > 3 {
+		m := len(idx)
+		earFound := false
+		for i := 0; i < m; i++ {
+			a := idx[(i+m-1)%m]
+			b := idx[i]
+			c := idx[(i+1)%m]
+
+			cr := poly2DCross(pts[a], pts[b], pts[c])
+			if !((ccw && cr > 0) || (!ccw && cr < 0)) {
+				continue // not a convex vertex
+			}
+
+			// No other vertex may lie inside triangle (a, b, c).
+			inside := false
+			for j := 0; j < m; j++ {
+				if j == (i+m-1)%m || j == i || j == (i+1)%m {
+					continue
+				}
+				if ptInTriangle(pts[idx[j]], pts[a], pts[b], pts[c]) {
+					inside = true
+					break
+				}
+			}
+			if inside {
+				continue
+			}
+
+			result = append(result, uint16(a), uint16(b), uint16(c))
+			idx = append(idx[:i], idx[i+1:]...)
+			earFound = true
+			break
+		}
+		if !earFound {
+			// Degenerate: fan-triangulate the remainder.
+			for j := 1; j < len(idx)-1; j++ {
+				result = append(result, uint16(idx[0]), uint16(idx[j]), uint16(idx[j+1]))
+			}
+			return result
+		}
+	}
+	return append(result, uint16(idx[0]), uint16(idx[1]), uint16(idx[2]))
+}
+
+// poly2DCross returns (a-o) × (b-o). Positive = CCW turn, negative = CW turn.
+func poly2DCross(o, a, b Vec2) float64 {
+	return (a.X-o.X)*(b.Y-o.Y) - (a.Y-o.Y)*(b.X-o.X)
+}
+
+// ptInTriangle reports whether p lies inside or on the boundary of triangle (a, b, c).
+func ptInTriangle(p, a, b, c Vec2) bool {
+	d1 := poly2DCross(a, b, p)
+	d2 := poly2DCross(b, c, p)
+	d3 := poly2DCross(c, a, p)
+	hasNeg := (d1 < 0) || (d2 < 0) || (d3 < 0)
+	hasPos := (d1 > 0) || (d2 > 0) || (d3 > 0)
+	return !(hasNeg && hasPos)
 }

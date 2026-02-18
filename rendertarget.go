@@ -194,10 +194,7 @@ func renderSubtree(s *Scene, n *Node, target *ebiten.Image, bounds Rect) {
 		children = n.sortedChildren
 	}
 	for _, child := range children {
-		childLocal := computeLocalTransform(child)
-		childTransform := multiplyAffine(offsetTransform, childLocal)
-		childAlpha := child.Alpha
-		renderSubtreeWalk(s, child, childTransform, childAlpha, &treeOrder)
+		renderSubtreeWalk(s, child, offsetTransform, 1.0, &treeOrder)
 	}
 
 	// Sort and submit to offscreen target.
@@ -221,6 +218,13 @@ func renderSubtreeWalk(s *Scene, n *Node, parentTransform [6]float64, parentAlph
 	transform := multiplyAffine(parentTransform, local)
 	alpha := parentAlpha * n.Alpha
 
+	// Nested special node (mask, cache, or filter): render it to its own RT
+	// and emit a command using the computed local transform.
+	if n.mask != nil || n.cacheEnabled || len(n.Filters) > 0 {
+		renderSpecialSubtreeNode(s, n, transform, alpha, treeOrder)
+		return
+	}
+
 	emitNodeCommand(s, n, transform, alpha, treeOrder)
 
 	// Use ZIndex-sorted children order, consistent with main traverse.
@@ -234,6 +238,64 @@ func renderSubtreeWalk(s *Scene, n *Node, parentTransform [6]float64, parentAlph
 	for _, child := range children {
 		renderSubtreeWalk(s, child, transform, alpha, treeOrder)
 	}
+}
+
+// renderSpecialSubtreeNode handles a masked/cached/filtered node encountered
+// inside a subtree rendering pass. It mirrors renderSpecialNode but uses an
+// explicit local transform instead of n.worldTransform.
+func renderSpecialSubtreeNode(s *Scene, n *Node, localTransform [6]float64, alpha float64, treeOrder *int) {
+	bounds := subtreeBounds(n)
+	padding := filterChainPadding(n.Filters)
+	bounds.X -= float64(padding)
+	bounds.Y -= float64(padding)
+	bounds.Width += float64(padding * 2)
+	bounds.Height += float64(padding * 2)
+
+	bX, bY := bounds.X, bounds.Y
+	a, b, c, d := localTransform[0], localTransform[1], localTransform[2], localTransform[3]
+	adjustedTransform := localTransform
+	adjustedTransform[4] += a*bX + c*bY
+	adjustedTransform[5] += b*bX + d*bY
+
+	w := int(math.Ceil(bounds.Width))
+	h := int(math.Ceil(bounds.Height))
+	if w <= 0 || h <= 0 {
+		return
+	}
+
+	rt := s.rtPool.Acquire(w, h)
+	renderSubtree(s, n, rt, bounds)
+	result := rt
+
+	if n.mask != nil {
+		maskRT := s.rtPool.Acquire(w, h)
+		renderSubtree(s, n.mask, maskRT, bounds)
+		var op ebiten.DrawImageOptions
+		op.Blend = BlendMask.EbitenBlend()
+		result.DrawImage(maskRT, &op)
+		s.rtPool.Release(maskRT)
+	}
+
+	if len(n.Filters) > 0 {
+		filtered := applyFilters(n.Filters, result, &s.rtPool)
+		if filtered != result {
+			s.rtPool.Release(result)
+			result = filtered
+		}
+	}
+
+	s.rtDeferred = append(s.rtDeferred, result)
+	*treeOrder++
+	s.commands = append(s.commands, RenderCommand{
+		Type:        CommandSprite,
+		Transform:   adjustedTransform,
+		Color:       Color{1, 1, 1, alpha},
+		BlendMode:   n.BlendMode,
+		RenderLayer: n.RenderLayer,
+		GlobalOrder: n.GlobalOrder,
+		treeOrder:   *treeOrder,
+		directImage: result,
+	})
 }
 
 // emitNodeCommand emits a render command for a single node at the given transform.

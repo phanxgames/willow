@@ -8,7 +8,7 @@ A retained-mode 2D scene graph, interaction layer, and render compiler for [Ebit
 
 <p align="center">
   <img src="examples/_assets/gif/shapes.gif" alt="Shapes demo" width="400">
-  <img src="examples/_assets/gif/tweens.gif" alt="Tweens demo" width="400">
+  <img src="examples/_assets/gif/masks.gif" alt="Masks demo" width="400">
   <img src="examples/_assets/gif/shaders.gif" alt="Shaders demo" width="400">
   <img src="examples/_assets/gif/watermesh.gif" alt="Watermesh demo" width="400">
 </p>
