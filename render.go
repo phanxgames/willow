@@ -263,14 +263,33 @@ func mergeRun(src, dst []RenderCommand, lo, mid, hi int) {
 // --- Special node rendering (Phase 09) ---
 
 // renderSpecialNode handles nodes with masks, cache, or filters.
-// Processing order: cache check → render subtree → apply mask → apply filters → cache store → emit command.
+// Processing order: bounds → adjust transform → cache check → render subtree → apply mask → apply filters → cache store → emit command.
 func (s *Scene) renderSpecialNode(n *Node, treeOrder *int) {
+	// Compute bounds up-front — needed by all paths to build the correct
+	// screen-space transform.  RT pixel (0,0) corresponds to local
+	// (bounds.X, bounds.Y), not local (0,0), so the world transform must be
+	// shifted by the world-space equivalent of that offset.
+	bounds := subtreeBounds(n)
+	padding := filterChainPadding(n.Filters)
+	bounds.X -= float64(padding)
+	bounds.Y -= float64(padding)
+	bounds.Width += float64(padding * 2)
+	bounds.Height += float64(padding * 2)
+
+	// adjustedTransform places RT(0,0) = local(bounds.X, bounds.Y) at the
+	// correct screen position: screen(tx + a*bX + c*bY, ty + b*bX + d*bY).
+	bX, bY := bounds.X, bounds.Y
+	a, b, c, d := n.worldTransform[0], n.worldTransform[1], n.worldTransform[2], n.worldTransform[3]
+	adjustedTransform := n.worldTransform
+	adjustedTransform[4] += a*bX + c*bY
+	adjustedTransform[5] += b*bX + d*bY
+
 	// Cache hit: reuse existing cached texture.
 	if n.cacheEnabled && n.cacheTexture != nil && !n.cacheDirty {
 		*treeOrder++
 		s.commands = append(s.commands, RenderCommand{
 			Type:        CommandSprite,
-			Transform:   n.worldTransform,
+			Transform:   adjustedTransform,
 			Color:       Color{1, 1, 1, n.worldAlpha},
 			BlendMode:   n.BlendMode,
 			RenderLayer: n.RenderLayer,
@@ -280,14 +299,6 @@ func (s *Scene) renderSpecialNode(n *Node, treeOrder *int) {
 		})
 		return
 	}
-
-	// Compute bounds with filter padding.
-	bounds := subtreeBounds(n)
-	padding := filterChainPadding(n.Filters)
-	bounds.X -= float64(padding)
-	bounds.Y -= float64(padding)
-	bounds.Width += float64(padding * 2)
-	bounds.Height += float64(padding * 2)
 
 	w := int(math.Ceil(bounds.Width))
 	h := int(math.Ceil(bounds.Height))
@@ -343,7 +354,7 @@ func (s *Scene) renderSpecialNode(n *Node, treeOrder *int) {
 		*treeOrder++
 		s.commands = append(s.commands, RenderCommand{
 			Type:        CommandSprite,
-			Transform:   n.worldTransform,
+			Transform:   adjustedTransform,
 			Color:       Color{1, 1, 1, n.worldAlpha},
 			BlendMode:   n.BlendMode,
 			RenderLayer: n.RenderLayer,
@@ -360,7 +371,7 @@ func (s *Scene) renderSpecialNode(n *Node, treeOrder *int) {
 	*treeOrder++
 	s.commands = append(s.commands, RenderCommand{
 		Type:        CommandSprite,
-		Transform:   n.worldTransform,
+		Transform:   adjustedTransform,
 		Color:       Color{1, 1, 1, n.worldAlpha},
 		BlendMode:   n.BlendMode,
 		RenderLayer: n.RenderLayer,

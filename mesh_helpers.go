@@ -18,10 +18,50 @@ const (
 	RopeJoinBevel
 )
 
+// RopeCurveMode selects the curve algorithm used by Rope.Update().
+type RopeCurveMode uint8
+
+const (
+	// RopeCurveLine draws a straight line between Start and End.
+	RopeCurveLine RopeCurveMode = iota
+	// RopeCurveCatenary simulates a drooping rope with gravity sag.
+	RopeCurveCatenary
+	// RopeCurveQuadBezier uses a quadratic Bézier with one control point.
+	RopeCurveQuadBezier
+	// RopeCurveCubicBezier uses a cubic Bézier with two control points.
+	RopeCurveCubicBezier
+	// RopeCurveWave produces a sinusoidal wave along the line.
+	RopeCurveWave
+	// RopeCurveCustom calls a user-provided PointsFunc callback.
+	RopeCurveCustom
+)
+
 // RopeConfig configures a Rope mesh.
 type RopeConfig struct {
 	Width    float64
 	JoinMode RopeJoinMode
+
+	CurveMode RopeCurveMode
+	Segments  int // number of subdivisions (default 20)
+
+	// Endpoint positions (pointers). Update() dereferences these each call,
+	// so you can bind them once and mutate the underlying Vec2 freely.
+	Start *Vec2
+	End   *Vec2
+
+	// Catenary sag in pixels (downward droop).
+	Sag float64
+
+	// Bézier control points (pointers). Quadratic uses Controls[0]; cubic uses both.
+	Controls [2]*Vec2
+
+	// Wave parameters.
+	Amplitude float64
+	Frequency float64 // cycles along the rope length
+	Phase     float64 // phase offset in radians
+
+	// Custom callback. Receives a preallocated buffer; must return the slice to use.
+	PointsFunc func(buf []Vec2) []Vec2
 }
 
 // Rope generates a ribbon/rope mesh that follows a polyline path.
@@ -29,6 +69,7 @@ type Rope struct {
 	node   *Node
 	config RopeConfig
 	cumLen []float64 // preallocated cumulative length buffer
+	ptsBuf []Vec2    // preallocated points buffer for Update()
 }
 
 // NewRope creates a rope mesh node that renders a textured ribbon along the given points.
@@ -43,6 +84,113 @@ func NewRope(name string, img *ebiten.Image, points []Vec2, cfg RopeConfig) (*Ro
 // Node returns the underlying mesh node.
 func (r *Rope) Node() *Node {
 	return r.node
+}
+
+// Config returns a pointer to the rope's configuration so callers can mutate
+// fields directly before calling Update().
+func (r *Rope) Config() *RopeConfig {
+	return &r.config
+}
+
+// Update recomputes the rope's point path from the current RopeConfig and
+// rebuilds the mesh. Call this in your update loop after changing the bound
+// Vec2 values. Start and End must be non-nil (except for RopeCurveCustom).
+func (r *Rope) Update() {
+	if r.config.CurveMode != RopeCurveCustom {
+		if r.config.Start == nil || r.config.End == nil {
+			return
+		}
+	}
+
+	segs := r.config.Segments
+	if segs <= 0 {
+		segs = 20
+	}
+	n := segs + 1
+
+	// Grow ptsBuf to high-water mark.
+	if cap(r.ptsBuf) < n {
+		r.ptsBuf = make([]Vec2, n)
+	}
+	r.ptsBuf = r.ptsBuf[:n]
+
+	switch r.config.CurveMode {
+	case RopeCurveLine:
+		s, e := *r.config.Start, *r.config.End
+		for i := 0; i < n; i++ {
+			t := float64(i) / float64(segs)
+			r.ptsBuf[i] = Vec2{
+				X: s.X + (e.X-s.X)*t,
+				Y: s.Y + (e.Y-s.Y)*t,
+			}
+		}
+
+	case RopeCurveCatenary:
+		s, e := *r.config.Start, *r.config.End
+		for i := 0; i < n; i++ {
+			t := float64(i) / float64(segs)
+			r.ptsBuf[i] = Vec2{
+				X: s.X + (e.X-s.X)*t,
+				Y: s.Y + (e.Y-s.Y)*t + r.config.Sag*math.Sin(math.Pi*t),
+			}
+		}
+
+	case RopeCurveQuadBezier:
+		if r.config.Controls[0] == nil {
+			return
+		}
+		a, c, b := *r.config.Start, *r.config.Controls[0], *r.config.End
+		for i := 0; i < n; i++ {
+			t := float64(i) / float64(segs)
+			u := 1 - t
+			r.ptsBuf[i] = Vec2{
+				X: u*u*a.X + 2*u*t*c.X + t*t*b.X,
+				Y: u*u*a.Y + 2*u*t*c.Y + t*t*b.Y,
+			}
+		}
+
+	case RopeCurveCubicBezier:
+		if r.config.Controls[0] == nil || r.config.Controls[1] == nil {
+			return
+		}
+		a, c1, c2, b := *r.config.Start, *r.config.Controls[0], *r.config.Controls[1], *r.config.End
+		for i := 0; i < n; i++ {
+			t := float64(i) / float64(segs)
+			u := 1 - t
+			u2 := u * u
+			t2 := t * t
+			r.ptsBuf[i] = Vec2{
+				X: u2*u*a.X + 3*u2*t*c1.X + 3*u*t2*c2.X + t2*t*b.X,
+				Y: u2*u*a.Y + 3*u2*t*c1.Y + 3*u*t2*c2.Y + t2*t*b.Y,
+			}
+		}
+
+	case RopeCurveWave:
+		s, e := *r.config.Start, *r.config.End
+		dx := e.X - s.X
+		dy := e.Y - s.Y
+		ln := math.Sqrt(dx*dx + dy*dy)
+		var px, py float64 // perpendicular unit vector
+		if ln > 1e-10 {
+			px = -dy / ln
+			py = dx / ln
+		}
+		for i := 0; i < n; i++ {
+			t := float64(i) / float64(segs)
+			off := r.config.Amplitude * math.Sin(r.config.Frequency*2*math.Pi*t+r.config.Phase)
+			r.ptsBuf[i] = Vec2{
+				X: s.X + dx*t + px*off,
+				Y: s.Y + dy*t + py*off,
+			}
+		}
+
+	case RopeCurveCustom:
+		if r.config.PointsFunc != nil {
+			r.ptsBuf = r.config.PointsFunc(r.ptsBuf)
+		}
+	}
+
+	r.SetPoints(r.ptsBuf)
 }
 
 // SetPoints updates the rope's path. For N points: 2N vertices, 6(N-1) indices.

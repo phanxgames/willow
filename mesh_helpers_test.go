@@ -114,6 +114,233 @@ func TestRopeInvalidatesMeshAABB(t *testing.T) {
 	}
 }
 
+// --- Rope Curve Modes ---
+
+func TestRopeUpdateLine(t *testing.T) {
+	start := Vec2{X: 0, Y: 0}
+	end := Vec2{X: 100, Y: 0}
+	r, n := NewRope("rope", nil, nil, RopeConfig{
+		Width:     4,
+		CurveMode: RopeCurveLine,
+		Segments:  10,
+		Start:     &start,
+		End:       &end,
+	})
+	r.Update()
+
+	// 11 points → 22 vertices, 10 segments → 60 indices.
+	if len(n.Vertices) != 22 {
+		t.Errorf("vertices = %d, want 22", len(n.Vertices))
+	}
+	if len(n.Indices) != 60 {
+		t.Errorf("indices = %d, want 60", len(n.Indices))
+	}
+
+	// First point at start, last point at end.
+	if !approxEqual(float64(n.Vertices[0].DstX), 0, 0.1) {
+		t.Errorf("first vertex X = %f, want ~0", n.Vertices[0].DstX)
+	}
+	lastV := len(n.Vertices) - 2 // top vertex of last point
+	if !approxEqual(float64(n.Vertices[lastV].DstX), 100, 0.1) {
+		t.Errorf("last vertex X = %f, want ~100", n.Vertices[lastV].DstX)
+	}
+}
+
+func TestRopeUpdateCatenary(t *testing.T) {
+	start := Vec2{X: 0, Y: 0}
+	end := Vec2{X: 100, Y: 0}
+	r, _ := NewRope("rope", nil, nil, RopeConfig{
+		Width:     4,
+		CurveMode: RopeCurveCatenary,
+		Segments:  20,
+		Start:     &start,
+		End:       &end,
+		Sag:       50,
+	})
+	r.Update()
+
+	// Midpoint should sag downward (positive Y).
+	midIdx := 10 * 2 // vertex index for midpoint (top vertex)
+	midY := float64(r.Node().Vertices[midIdx].DstY)
+	if midY < 40 {
+		t.Errorf("catenary midpoint Y = %f, want > 40 (sag=50)", midY)
+	}
+}
+
+func TestRopeUpdateQuadBezier(t *testing.T) {
+	start := Vec2{X: 0, Y: 0}
+	end := Vec2{X: 100, Y: 0}
+	ctrl := Vec2{X: 50, Y: 80}
+	r, n := NewRope("rope", nil, nil, RopeConfig{
+		Width:     4,
+		CurveMode: RopeCurveQuadBezier,
+		Segments:  10,
+		Start:     &start,
+		End:       &end,
+		Controls:  [2]*Vec2{&ctrl},
+	})
+	r.Update()
+
+	if len(n.Vertices) != 22 {
+		t.Errorf("vertices = %d, want 22", len(n.Vertices))
+	}
+
+	// Midpoint (t=0.5): 0.25*0 + 2*0.25*50 + 0.25*100 = 50 (X)
+	midIdx := 5 * 2
+	if !approxEqual(float64(n.Vertices[midIdx].DstX), 50, 5) {
+		t.Errorf("quad bezier midpoint X = %f, want ~50", n.Vertices[midIdx].DstX)
+	}
+}
+
+func TestRopeUpdateCubicBezier(t *testing.T) {
+	start := Vec2{X: 0, Y: 0}
+	end := Vec2{X: 100, Y: 0}
+	c1 := Vec2{X: 33, Y: 60}
+	c2 := Vec2{X: 66, Y: 60}
+	r, n := NewRope("rope", nil, nil, RopeConfig{
+		Width:     4,
+		CurveMode: RopeCurveCubicBezier,
+		Segments:  10,
+		Start:     &start,
+		End:       &end,
+		Controls:  [2]*Vec2{&c1, &c2},
+	})
+	r.Update()
+
+	if len(n.Vertices) != 22 {
+		t.Errorf("vertices = %d, want 22", len(n.Vertices))
+	}
+
+	// Endpoints should match Start and End (within halfW perpendicular offset).
+	if !approxEqual(float64(n.Vertices[0].DstX), 0, 3) {
+		t.Errorf("start X = %f, want ~0", n.Vertices[0].DstX)
+	}
+	lastV := len(n.Vertices) - 2
+	if !approxEqual(float64(n.Vertices[lastV].DstX), 100, 3) {
+		t.Errorf("end X = %f, want ~100", n.Vertices[lastV].DstX)
+	}
+}
+
+func TestRopeUpdateWave(t *testing.T) {
+	start := Vec2{X: 0, Y: 100}
+	end := Vec2{X: 200, Y: 100}
+	r, _ := NewRope("rope", nil, nil, RopeConfig{
+		Width:     4,
+		CurveMode: RopeCurveWave,
+		Segments:  40,
+		Start:     &start,
+		End:       &end,
+		Amplitude: 30,
+		Frequency: 2,
+	})
+	r.Update()
+
+	// For a horizontal line with wave, some vertices should deviate from Y=100.
+	maxDev := 0.0
+	for i := 0; i < len(r.Node().Vertices); i += 2 {
+		dev := math.Abs(float64(r.Node().Vertices[i].DstY) - 100)
+		if dev > maxDev {
+			maxDev = dev
+		}
+	}
+	if maxDev < 20 {
+		t.Errorf("wave max deviation = %f, want > 20 (amplitude=30)", maxDev)
+	}
+}
+
+func TestRopeUpdateCustom(t *testing.T) {
+	customPts := []Vec2{{0, 0}, {10, 10}, {20, 0}}
+	r, n := NewRope("rope", nil, nil, RopeConfig{
+		Width:     4,
+		CurveMode: RopeCurveCustom,
+		PointsFunc: func(buf []Vec2) []Vec2 {
+			return customPts
+		},
+	})
+	r.Update()
+
+	// 3 points → 6 vertices.
+	if len(n.Vertices) != 6 {
+		t.Errorf("vertices = %d, want 6", len(n.Vertices))
+	}
+}
+
+func TestRopeUpdateDefaultSegments(t *testing.T) {
+	start := Vec2{X: 0, Y: 0}
+	end := Vec2{X: 100, Y: 0}
+	r, n := NewRope("rope", nil, nil, RopeConfig{
+		Width:     4,
+		CurveMode: RopeCurveLine,
+		Start:     &start,
+		End:       &end,
+		// Segments is 0 → should default to 20.
+	})
+	r.Update()
+
+	// 21 points → 42 vertices.
+	if len(n.Vertices) != 42 {
+		t.Errorf("vertices = %d, want 42 (default 20 segments)", len(n.Vertices))
+	}
+}
+
+func TestRopeUpdateBufferReuse(t *testing.T) {
+	start := Vec2{X: 0, Y: 0}
+	end := Vec2{X: 100, Y: 0}
+	r, _ := NewRope("rope", nil, nil, RopeConfig{
+		Width:     4,
+		CurveMode: RopeCurveLine,
+		Segments:  10,
+		Start:     &start,
+		End:       &end,
+	})
+	r.Update()
+	ptsCap := cap(r.ptsBuf)
+
+	// Update again with fewer segments — buffer should not shrink.
+	r.config.Segments = 5
+	r.Update()
+	if cap(r.ptsBuf) != ptsCap {
+		t.Errorf("ptsBuf cap changed from %d to %d", ptsCap, cap(r.ptsBuf))
+	}
+}
+
+func TestRopeUpdateByRefMutation(t *testing.T) {
+	start := Vec2{X: 0, Y: 0}
+	end := Vec2{X: 100, Y: 0}
+	r, _ := NewRope("rope", nil, nil, RopeConfig{
+		Width:     4,
+		CurveMode: RopeCurveLine,
+		Segments:  10,
+		Start:     &start,
+		End:       &end,
+	})
+	r.Update()
+
+	// Mutate the bound Vec2 directly — Update() should pick it up.
+	end.X = 200
+	r.Update()
+
+	lastV := len(r.Node().Vertices) - 2
+	if !approxEqual(float64(r.Node().Vertices[lastV].DstX), 200, 1) {
+		t.Errorf("after ref mutation, end X = %f, want ~200", r.Node().Vertices[lastV].DstX)
+	}
+}
+
+func TestRopeUpdateNilStartEnd(t *testing.T) {
+	r, n := NewRope("rope", nil, nil, RopeConfig{
+		Width:     4,
+		CurveMode: RopeCurveLine,
+		Segments:  10,
+		// Start and End are nil.
+	})
+	r.Update()
+
+	// Should be a no-op — no vertices generated.
+	if len(n.Vertices) != 0 {
+		t.Errorf("nil start/end should produce no vertices, got %d", len(n.Vertices))
+	}
+}
+
 // --- DistortionGrid ---
 
 func TestDistortionGridDimensions(t *testing.T) {
