@@ -715,22 +715,12 @@ func (n *Node) removeChildByPtr(child *Node) {
 	}
 }
 
-// markSubtreeDirty sets transformDirty on node and all its descendants.
+// markSubtreeDirty marks a node as needing transform and alpha recomputation.
+// Children inherit the recomputation via parentRecomputed/parentAlphaChanged
+// during updateWorldTransform and traverse, so only the subtree root needs
+// the flag set (upward-only dirty model, matching Pixi v8 and Starling).
 func markSubtreeDirty(node *Node) {
 	invalidateAncestorCache(node)
 	node.transformDirty = true
 	node.alphaDirty = true
-	for _, child := range node.children {
-		markSubtreeDirtyNoInvalidate(child)
-	}
-}
-
-// markSubtreeDirtyNoInvalidate is the recursive inner loop — ancestor cache
-// invalidation only needs to happen once from the subtree root.
-func markSubtreeDirtyNoInvalidate(node *Node) {
-	node.transformDirty = true
-	node.alphaDirty = true
-	for _, child := range node.children {
-		markSubtreeDirtyNoInvalidate(child)
-	}
 }

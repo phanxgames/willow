@@ -286,36 +286,35 @@ func (s *Scene) appendSpriteQuad(cmd *RenderCommand) {
 	w := float32(r.Width)
 	h := float32(r.Height)
 
-	// 4 local positions: TL, TR, BL, BR
-	lx := [4]float32{ox, ox + w, ox, ox + w}
-	ly := [4]float32{oy, oy, oy + h, oy + h}
-
-	// Apply affine transform: dx = a*lx + c*ly + tx, dy = b*lx + d*ly + ty
+	// Affine transform components.
 	a, b, c, d, tx, ty := t[0], t[1], t[2], t[3], t[4], t[5]
 
+	// Precompute local corner positions: TL, TR, BL, BR.
+	x0, y0 := ox, oy       // TL
+	x1, y1 := ox+w, oy     // TR
+	x2, y2 := ox, oy+h     // BL
+	x3, y3 := ox+w, oy+h   // BR
+
 	// Source UVs (pixel coordinates on the atlas page).
-	var sx, sy [4]float32
+	var sx0, sy0, sx1, sy1, sx2, sy2, sx3, sy3 float32
 	if r.Rotated {
-		// Rotated region stored at (r.X, r.Y) with stored rect width=r.Height, height=r.Width.
-		// The rotation undoes the 90° CW storage rotation.
-		// Mapping visual corners → atlas coords:
-		//   Visual TL (ox, oy)       → atlas (r.X + r.Height, r.Y)
-		//   Visual TR (ox + w, oy)   → atlas (r.X + r.Height, r.Y + r.Width)
-		//   Visual BL (ox, oy + h)   → atlas (r.X, r.Y)
-		//   Visual BR (ox + w, oy+h) → atlas (r.X, r.Y + r.Width)
 		rx := float32(r.X)
 		ry := float32(r.Y)
 		rh := float32(r.Height) // stored width in atlas
 		rw := float32(r.Width)  // stored height in atlas
-		sx = [4]float32{rx + rh, rx + rh, rx, rx}
-		sy = [4]float32{ry, ry + rw, ry, ry + rw}
+		sx0, sy0 = rx+rh, ry       // TL
+		sx1, sy1 = rx+rh, ry+rw    // TR
+		sx2, sy2 = rx, ry           // BL
+		sx3, sy3 = rx, ry+rw        // BR
 	} else {
 		rx := float32(r.X)
 		ry := float32(r.Y)
 		rw := float32(r.Width)
 		rh := float32(r.Height)
-		sx = [4]float32{rx, rx + rw, rx, rx + rw}
-		sy = [4]float32{ry, ry, ry + rh, ry + rh}
+		sx0, sy0 = rx, ry           // TL
+		sx1, sy1 = rx+rw, ry       // TR
+		sx2, sy2 = rx, ry+rh       // BL
+		sx3, sy3 = rx+rw, ry+rh    // BR
 	}
 
 	// Premultiplied RGBA. Zero-color sentinel → opaque white.
@@ -331,20 +330,29 @@ func (s *Scene) appendSpriteQuad(cmd *RenderCommand) {
 
 	base := uint32(len(s.batchVerts))
 
-	for i := 0; i < 4; i++ {
-		dx := a*lx[i] + c*ly[i] + tx
-		dy := b*lx[i] + d*ly[i] + ty
-		s.batchVerts = append(s.batchVerts, ebiten.Vertex{
-			DstX:   dx,
-			DstY:   dy,
-			SrcX:   sx[i],
-			SrcY:   sy[i],
-			ColorR: cr,
-			ColorG: cg,
-			ColorB: cb,
-			ColorA: ca,
-		})
-	}
+	// Inline 4 vertex computations (no loop, no intermediate arrays).
+	s.batchVerts = append(s.batchVerts,
+		ebiten.Vertex{
+			DstX: a*x0 + c*y0 + tx, DstY: b*x0 + d*y0 + ty,
+			SrcX: sx0, SrcY: sy0,
+			ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
+		},
+		ebiten.Vertex{
+			DstX: a*x1 + c*y1 + tx, DstY: b*x1 + d*y1 + ty,
+			SrcX: sx1, SrcY: sy1,
+			ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
+		},
+		ebiten.Vertex{
+			DstX: a*x2 + c*y2 + tx, DstY: b*x2 + d*y2 + ty,
+			SrcX: sx2, SrcY: sy2,
+			ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
+		},
+		ebiten.Vertex{
+			DstX: a*x3 + c*y3 + tx, DstY: b*x3 + d*y3 + ty,
+			SrcX: sx3, SrcY: sy3,
+			ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
+		},
+	)
 
 	// Two triangles: TL-TR-BL, TR-BR-BL
 	s.batchInds = append(s.batchInds,

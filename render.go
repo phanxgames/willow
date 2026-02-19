@@ -240,6 +240,21 @@ func (s *Scene) mergeSort() {
 	if n <= 1 {
 		return
 	}
+
+	// Quick O(n) check: if commands are already sorted, skip the full sort.
+	// This is the common case for static scenes where traverse emits commands
+	// in the same order every frame (Pixi v8's structureDidChange pattern).
+	sorted := true
+	for i := 1; i < n; i++ {
+		if !commandLessOrEqual(s.commands[i-1], s.commands[i]) {
+			sorted = false
+			break
+		}
+	}
+	if sorted {
+		return
+	}
+
 	if cap(s.sortBuf) < n {
 		s.sortBuf = make([]RenderCommand, n)
 	}
