@@ -230,6 +230,9 @@ func (s *Scene) Update() {
 }
 
 func updateNodesAndParticles(n *Node, dt float64) {
+	if !n.Visible {
+		return
+	}
 	if n.OnUpdate != nil {
 		n.OnUpdate(dt)
 	}

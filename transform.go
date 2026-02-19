@@ -15,6 +15,12 @@ func computeLocalTransform(n *Node) [6]float64 {
 	sx := n.ScaleX
 	sy := n.ScaleY
 
+	// Fast path: no rotation and no skew (the common case for static sprites).
+	// Avoids Sincos and Tan entirely — just scale + pivot + translate.
+	if n.Rotation == 0 && n.SkewX == 0 && n.SkewY == 0 {
+		return [6]float64{sx, 0, 0, sy, -n.PivotX*sx + n.X, -n.PivotY*sy + n.Y}
+	}
+
 	var sin, cos float64
 	if n.Rotation != 0 {
 		sin, cos = math.Sincos(n.Rotation)
@@ -101,6 +107,9 @@ func transformPoint(m [6]float64, x, y float64) (float64, float64) {
 // parentRecomputed indicates whether the parent was recomputed this frame,
 // which forces recomputation of this node even if it's not dirty.
 func updateWorldTransform(n *Node, parentTransform [6]float64, parentAlpha float64, parentRecomputed bool) {
+	if !n.Visible {
+		return
+	}
 	recompute := n.transformDirty || parentRecomputed
 	if recompute {
 		local := computeLocalTransform(n)
