@@ -15,12 +15,17 @@ const (
 	CommandParticle                    // particle quads (batches as sprites)
 )
 
+// color32 is a compact RGBA color using float32, for render commands only.
+type color32 struct {
+	R, G, B, A float32
+}
+
 // RenderCommand is a single draw instruction emitted during scene traversal.
 type RenderCommand struct {
 	Type          CommandType
-	Transform     [6]float64
+	Transform     [6]float32
 	TextureRegion TextureRegion
-	Color         Color
+	Color         color32
 	BlendMode     BlendMode
 	ShaderID      uint16
 	TargetID      uint16
@@ -40,6 +45,14 @@ type RenderCommand struct {
 	// emitter references the particle emitter for CommandParticle commands.
 	emitter            *ParticleEmitter
 	worldSpaceParticle bool // particles store world positions; Transform is view-only
+}
+
+// identityTransform32 is the identity affine matrix as float32.
+var identityTransform32 = [6]float32{1, 0, 0, 1, 0, 0}
+
+// affine32 converts a [6]float64 affine matrix to [6]float32.
+func affine32(m [6]float64) [6]float32 {
+	return [6]float32{float32(m[0]), float32(m[1]), float32(m[2]), float32(m[3]), float32(m[4]), float32(m[5])}
 }
 
 // traverse walks the node tree depth-first, updating transforms and emitting
@@ -77,8 +90,8 @@ func (s *Scene) traverse(n *Node, parentTransform [6]float64, parentAlpha float6
 			*treeOrder++
 			cmd := RenderCommand{
 				Type:        CommandSprite,
-				Transform:   n.worldTransform,
-				Color:       Color{n.Color.R, n.Color.G, n.Color.B, n.Color.A * n.worldAlpha},
+				Transform:   affine32(n.worldTransform),
+				Color:       color32{float32(n.Color.R), float32(n.Color.G), float32(n.Color.B), float32(n.Color.A * n.worldAlpha)},
 				BlendMode:   n.BlendMode,
 				RenderLayer: n.RenderLayer,
 				GlobalOrder: n.GlobalOrder,
@@ -100,7 +113,7 @@ func (s *Scene) traverse(n *Node, parentTransform [6]float64, parentAlpha float6
 			*treeOrder++
 			s.commands = append(s.commands, RenderCommand{
 				Type:        CommandMesh,
-				Transform:   n.worldTransform,
+				Transform:   affine32(n.worldTransform),
 				BlendMode:   n.BlendMode,
 				RenderLayer: n.RenderLayer,
 				GlobalOrder: n.GlobalOrder,
@@ -119,10 +132,10 @@ func (s *Scene) traverse(n *Node, parentTransform [6]float64, parentAlpha float6
 				}
 				s.commands = append(s.commands, RenderCommand{
 					Type:               CommandParticle,
-					Transform:          particleTransform,
+					Transform:          affine32(particleTransform),
 					TextureRegion:      n.TextureRegion,
 					directImage:        n.customImage,
-					Color:              Color{n.Color.R, n.Color.G, n.Color.B, n.Color.A * n.worldAlpha},
+					Color:              color32{float32(n.Color.R), float32(n.Color.G), float32(n.Color.B), float32(n.Color.A * n.worldAlpha)},
 					BlendMode:          n.BlendMode,
 					RenderLayer:        n.RenderLayer,
 					GlobalOrder:        n.GlobalOrder,
@@ -285,12 +298,13 @@ func (s *Scene) renderSpecialNode(n *Node, treeOrder *int) {
 	adjustedTransform[5] += b*bX + d*bY
 
 	// Cache hit: reuse existing cached texture.
+	at32 := affine32(adjustedTransform)
 	if n.cacheEnabled && n.cacheTexture != nil && !n.cacheDirty {
 		*treeOrder++
 		s.commands = append(s.commands, RenderCommand{
 			Type:        CommandSprite,
-			Transform:   adjustedTransform,
-			Color:       Color{1, 1, 1, n.worldAlpha},
+			Transform:   at32,
+			Color:       color32{1, 1, 1, float32(n.worldAlpha)},
 			BlendMode:   n.BlendMode,
 			RenderLayer: n.RenderLayer,
 			GlobalOrder: n.GlobalOrder,
@@ -354,8 +368,8 @@ func (s *Scene) renderSpecialNode(n *Node, treeOrder *int) {
 		*treeOrder++
 		s.commands = append(s.commands, RenderCommand{
 			Type:        CommandSprite,
-			Transform:   adjustedTransform,
-			Color:       Color{1, 1, 1, n.worldAlpha},
+			Transform:   at32,
+			Color:       color32{1, 1, 1, float32(n.worldAlpha)},
 			BlendMode:   n.BlendMode,
 			RenderLayer: n.RenderLayer,
 			GlobalOrder: n.GlobalOrder,
@@ -371,8 +385,8 @@ func (s *Scene) renderSpecialNode(n *Node, treeOrder *int) {
 	*treeOrder++
 	s.commands = append(s.commands, RenderCommand{
 		Type:        CommandSprite,
-		Transform:   adjustedTransform,
-		Color:       Color{1, 1, 1, n.worldAlpha},
+		Transform:   at32,
+		Color:       color32{1, 1, 1, float32(n.worldAlpha)},
 		BlendMode:   n.BlendMode,
 		RenderLayer: n.RenderLayer,
 		GlobalOrder: n.GlobalOrder,

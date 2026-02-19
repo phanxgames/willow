@@ -382,7 +382,7 @@ func TestTextNode_InheritsTransform(t *testing.T) {
 	// Glyph 'A' has xOffset=1, yOffset=2.
 	// World = parent(100,50) + glyph(1,2) = (101, 52) in tx/ty
 	cmd := s.commands[0]
-	tx, ty := cmd.Transform[4], cmd.Transform[5]
+	tx, ty := float64(cmd.Transform[4]), float64(cmd.Transform[5])
 	if math.Abs(tx-101) > 0.01 {
 		t.Errorf("glyph tx = %f, want 101", tx)
 	}
@@ -414,7 +414,9 @@ func TestTextNode_InheritsAlpha(t *testing.T) {
 
 	// worldAlpha = 0.5 * 0.8 = 0.4
 	// Color.A = textBlock.Color.A(1) * node.Color.A(1) * worldAlpha(0.4) = 0.4
-	assertNear(t, "cmd.Color.A", s.commands[0].Color.A, 0.4)
+	if got := float64(s.commands[0].Color.A); math.Abs(got-0.4) > 1e-6 {
+		t.Errorf("cmd.Color.A = %v, want ~0.4", got)
+	}
 }
 
 // --- Outline ---

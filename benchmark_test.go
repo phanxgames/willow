@@ -1,6 +1,7 @@
 package willow
 
 import (
+	"image"
 	"math"
 	"testing"
 
@@ -710,5 +711,297 @@ func BenchmarkDraw_RealWorldAtlas_Coalesced(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		s.Draw(screen)
+	}
+}
+
+// =============================================================================
+// Raw Ebitengine baselines — no scene graph, no traversal, no sorting.
+// These measure the floor: pure draw call cost with pre-computed transforms.
+// =============================================================================
+
+// rawSprite holds pre-computed data for a raw Ebitengine DrawImage call.
+type rawSprite struct {
+	sub *ebiten.Image
+	op  ebiten.DrawImageOptions
+}
+
+// rawBatch holds pre-computed vertex/index data for a raw DrawTriangles32 call.
+type rawBatch struct {
+	verts []ebiten.Vertex
+	inds  []uint32
+	page  *ebiten.Image
+}
+
+// buildRawSprites creates n pre-computed DrawImage calls against a single page.
+func buildRawSprites_SinglePage(n int) ([]rawSprite, *ebiten.Image) {
+	page := ebiten.NewImage(128, 128)
+	sub := page.SubImage(image.Rect(0, 0, 32, 32)).(*ebiten.Image)
+	sprites := make([]rawSprite, n)
+	for i := range sprites {
+		sprites[i].sub = sub
+		sprites[i].op.GeoM.Translate(float64(i%100)*40, float64(i/100)*40)
+		sprites[i].op.ColorScale.Scale(1, 1, 1, 1)
+	}
+	return sprites, page
+}
+
+// buildRawBatches_SinglePage creates a single DrawTriangles32 batch for n sprites.
+func buildRawBatches_SinglePage(n int) ([]rawBatch, *ebiten.Image) {
+	page := ebiten.NewImage(128, 128)
+	verts := make([]ebiten.Vertex, 0, n*4)
+	inds := make([]uint32, 0, n*6)
+	for i := 0; i < n; i++ {
+		x := float32(i%100) * 40
+		y := float32(i/100) * 40
+		base := uint32(len(verts))
+		verts = append(verts,
+			ebiten.Vertex{DstX: x, DstY: y, SrcX: 0, SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+			ebiten.Vertex{DstX: x + 32, DstY: y, SrcX: 32, SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+			ebiten.Vertex{DstX: x, DstY: y + 32, SrcX: 0, SrcY: 32, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+			ebiten.Vertex{DstX: x + 32, DstY: y + 32, SrcX: 32, SrcY: 32, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+		)
+		inds = append(inds, base, base+1, base+2, base+1, base+3, base+2)
+	}
+	return []rawBatch{{verts: verts, inds: inds, page: page}}, page
+}
+
+// buildRawSprites_RealWorld creates n pre-computed DrawImage calls across 2
+// 4096x4096 pages in runs of runLen (matching setupRealWorldAtlasScene).
+func buildRawSprites_RealWorld(runLen, runs int) []rawSprite {
+	pages := [2]*ebiten.Image{
+		ebiten.NewImage(4096, 4096),
+		ebiten.NewImage(4096, 4096),
+	}
+	total := runLen * runs
+	sprites := make([]rawSprite, total)
+	for i := 0; i < total; i++ {
+		run := i / runLen
+		p := pages[run%2]
+		tileX := (i % 64) * 64
+		tileY := (i / 64 % 64) * 64
+		sprites[i].sub = p.SubImage(image.Rect(tileX, tileY, tileX+64, tileY+64)).(*ebiten.Image)
+		sprites[i].op.GeoM.Translate(float64(i%100)*64, float64(i/100)*64)
+		sprites[i].op.ColorScale.Scale(1, 1, 1, 1)
+	}
+	return sprites
+}
+
+// buildRawBatches_RealWorld creates DrawTriangles32 batches matching the
+// real-world atlas layout: runs of runLen sprites per page, alternating pages.
+func buildRawBatches_RealWorld(runLen, runs int) []rawBatch {
+	pages := [2]*ebiten.Image{
+		ebiten.NewImage(4096, 4096),
+		ebiten.NewImage(4096, 4096),
+	}
+	total := runLen * runs
+	batches := make([]rawBatch, 0, runs)
+	var curVerts []ebiten.Vertex
+	var curInds []uint32
+	curPage := -1
+
+	flush := func(page *ebiten.Image) {
+		if len(curVerts) > 0 {
+			batches = append(batches, rawBatch{verts: curVerts, inds: curInds, page: page})
+		}
+	}
+
+	for i := 0; i < total; i++ {
+		run := i / runLen
+		pageIdx := run % 2
+		if pageIdx != curPage {
+			if curPage >= 0 {
+				flush(pages[curPage])
+			}
+			curVerts = make([]ebiten.Vertex, 0, runLen*4)
+			curInds = make([]uint32, 0, runLen*6)
+			curPage = pageIdx
+		}
+		x := float32(i%100) * 64
+		y := float32(i/100) * 64
+		tileX := float32((i % 64) * 64)
+		tileY := float32((i / 64 % 64) * 64)
+		base := uint32(len(curVerts))
+		curVerts = append(curVerts,
+			ebiten.Vertex{DstX: x, DstY: y, SrcX: tileX, SrcY: tileY, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+			ebiten.Vertex{DstX: x + 64, DstY: y, SrcX: tileX + 64, SrcY: tileY, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+			ebiten.Vertex{DstX: x, DstY: y + 64, SrcX: tileX, SrcY: tileY + 64, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+			ebiten.Vertex{DstX: x + 64, DstY: y + 64, SrcX: tileX + 64, SrcY: tileY + 64, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+		)
+		curInds = append(curInds, base, base+1, base+2, base+1, base+3, base+2)
+	}
+	flush(pages[curPage])
+	return batches
+}
+
+// buildRawSprites_Mixed creates pre-computed DrawImage calls matching
+// setupMixedScene: sprites across 2 pages with particle-equivalent sprites interleaved.
+func buildRawSprites_Mixed(nSprites, nEmitters, particlesPerEmitter int) []rawSprite {
+	pages := [2]*ebiten.Image{
+		ebiten.NewImage(128, 128),
+		ebiten.NewImage(128, 128),
+	}
+	spriteSub := [2]*ebiten.Image{
+		pages[0].SubImage(image.Rect(0, 0, 32, 32)).(*ebiten.Image),
+		pages[1].SubImage(image.Rect(0, 0, 32, 32)).(*ebiten.Image),
+	}
+	particleSub := [2]*ebiten.Image{
+		pages[0].SubImage(image.Rect(0, 0, 8, 8)).(*ebiten.Image),
+		pages[1].SubImage(image.Rect(0, 0, 8, 8)).(*ebiten.Image),
+	}
+	total := nSprites + nEmitters*particlesPerEmitter
+	sprites := make([]rawSprite, 0, total)
+	spritesPerGroup := nSprites / (nEmitters + 1)
+	spriteIdx := 0
+
+	addSprites := func(count int) {
+		for j := 0; j < count && spriteIdx < nSprites; j++ {
+			var rs rawSprite
+			rs.sub = spriteSub[spriteIdx%2]
+			rs.op.GeoM.Translate(float64(spriteIdx%100)*40, float64(spriteIdx/100)*40)
+			rs.op.ColorScale.Scale(1, 1, 1, 1)
+			if spriteIdx%10 == 0 {
+				rs.op.Blend = BlendAdd.EbitenBlend()
+			}
+			sprites = append(sprites, rs)
+			spriteIdx++
+		}
+	}
+
+	for e := 0; e < nEmitters; e++ {
+		addSprites(spritesPerGroup)
+		for p := 0; p < particlesPerEmitter; p++ {
+			var rs rawSprite
+			rs.sub = particleSub[e%2]
+			rs.op.GeoM.Translate(float64(p%50)*10, float64(p/50)*10)
+			rs.op.ColorScale.Scale(1, 0.5, 0.5, 0.8)
+			sprites = append(sprites, rs)
+		}
+	}
+	addSprites(nSprites - spriteIdx)
+	return sprites
+}
+
+// --- Raw Ebitengine: Single Page (10K sprites) ---
+
+func BenchmarkRaw_SinglePage_DrawImage(b *testing.B) {
+	sprites, _ := buildRawSprites_SinglePage(10000)
+	screen := ebiten.NewImage(1280, 720)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for j := range sprites {
+			screen.DrawImage(sprites[j].sub, &sprites[j].op)
+		}
+	}
+}
+
+func BenchmarkRaw_SinglePage_DrawTriangles32(b *testing.B) {
+	batches, _ := buildRawBatches_SinglePage(10000)
+	screen := ebiten.NewImage(1280, 720)
+	var triOp ebiten.DrawTrianglesOptions
+	triOp.ColorScaleMode = ebiten.ColorScaleModePremultipliedAlpha
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for j := range batches {
+			screen.DrawTriangles32(batches[j].verts, batches[j].inds, batches[j].page, &triOp)
+		}
+	}
+}
+
+// --- Raw Ebitengine: Real-World Atlas (10K sprites, 2x 4096x4096, runs of 1000) ---
+
+func BenchmarkRaw_RealWorldAtlas_DrawImage(b *testing.B) {
+	sprites := buildRawSprites_RealWorld(1000, 10)
+	screen := ebiten.NewImage(1280, 720)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for j := range sprites {
+			screen.DrawImage(sprites[j].sub, &sprites[j].op)
+		}
+	}
+}
+
+func BenchmarkRaw_RealWorldAtlas_DrawTriangles32(b *testing.B) {
+	batches := buildRawBatches_RealWorld(1000, 10)
+	screen := ebiten.NewImage(1280, 720)
+	var triOp ebiten.DrawTrianglesOptions
+	triOp.ColorScaleMode = ebiten.ColorScaleModePremultipliedAlpha
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for j := range batches {
+			screen.DrawTriangles32(batches[j].verts, batches[j].inds, batches[j].page, &triOp)
+		}
+	}
+}
+
+// --- Raw Ebitengine: Mixed (5K sprites + 5 emitters x 200 particles) ---
+
+func BenchmarkRaw_Mixed_DrawImage(b *testing.B) {
+	sprites := buildRawSprites_Mixed(5000, 5, 200)
+	screen := ebiten.NewImage(1280, 720)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for j := range sprites {
+			screen.DrawImage(sprites[j].sub, &sprites[j].op)
+		}
+	}
+}
+
+// --- Raw Ebitengine: Particles (1000 particles) ---
+
+func BenchmarkRaw_Particles_DrawImage(b *testing.B) {
+	page := ebiten.NewImage(128, 128)
+	sub := page.SubImage(image.Rect(0, 0, 8, 8)).(*ebiten.Image)
+	sprites := make([]rawSprite, 1000)
+	for i := range sprites {
+		sprites[i].sub = sub
+		sprites[i].op.GeoM.Translate(float64(i%50)*10, float64(i/50)*10)
+		sprites[i].op.GeoM.Scale(0.5, 0.5)
+		sprites[i].op.ColorScale.Scale(0.8, 0.4, 0.4, 0.7)
+	}
+	screen := ebiten.NewImage(640, 480)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for j := range sprites {
+			screen.DrawImage(sprites[j].sub, &sprites[j].op)
+		}
+	}
+}
+
+func BenchmarkRaw_Particles_DrawTriangles32(b *testing.B) {
+	page := ebiten.NewImage(128, 128)
+	verts := make([]ebiten.Vertex, 0, 1000*4)
+	inds := make([]uint32, 0, 1000*6)
+	for i := 0; i < 1000; i++ {
+		x := float32(i%50) * 10 * 0.5
+		y := float32(i/50) * 10 * 0.5
+		base := uint32(len(verts))
+		verts = append(verts,
+			ebiten.Vertex{DstX: x, DstY: y, SrcX: 0, SrcY: 0, ColorR: 0.56, ColorG: 0.28, ColorB: 0.28, ColorA: 0.7},
+			ebiten.Vertex{DstX: x + 4, DstY: y, SrcX: 8, SrcY: 0, ColorR: 0.56, ColorG: 0.28, ColorB: 0.28, ColorA: 0.7},
+			ebiten.Vertex{DstX: x, DstY: y + 4, SrcX: 0, SrcY: 8, ColorR: 0.56, ColorG: 0.28, ColorB: 0.28, ColorA: 0.7},
+			ebiten.Vertex{DstX: x + 4, DstY: y + 4, SrcX: 8, SrcY: 8, ColorR: 0.56, ColorG: 0.28, ColorB: 0.28, ColorA: 0.7},
+		)
+		inds = append(inds, base, base+1, base+2, base+1, base+3, base+2)
+	}
+	screen := ebiten.NewImage(640, 480)
+	var triOp ebiten.DrawTrianglesOptions
+	triOp.ColorScaleMode = ebiten.ColorScaleModePremultipliedAlpha
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		screen.DrawTriangles32(verts, inds, page, &triOp)
 	}
 }

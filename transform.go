@@ -15,7 +15,12 @@ func computeLocalTransform(n *Node) [6]float64 {
 	sx := n.ScaleX
 	sy := n.ScaleY
 
-	sin, cos := math.Sincos(n.Rotation)
+	var sin, cos float64
+	if n.Rotation != 0 {
+		sin, cos = math.Sincos(n.Rotation)
+	} else {
+		cos = 1
+	}
 
 	var tanSkewX, tanSkewY float64
 	if n.SkewX != 0 {

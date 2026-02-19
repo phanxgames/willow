@@ -637,20 +637,20 @@ func emitBitmapTextCommands(tb *TextBlock, n *Node, commands []RenderCommand, tr
 
 	lh := tb.lineHeight()
 	alpha := n.worldAlpha
-	color := Color{
-		R: tb.Color.R * n.Color.R,
-		G: tb.Color.G * n.Color.G,
-		B: tb.Color.B * n.Color.B,
-		A: tb.Color.A * n.Color.A * alpha,
+	color := color32{
+		R: float32(tb.Color.R * n.Color.R),
+		G: float32(tb.Color.G * n.Color.G),
+		B: float32(tb.Color.B * n.Color.B),
+		A: float32(tb.Color.A * n.Color.A * alpha),
 	}
 
 	// Outline pass: render glyphs offset in 8 directions with outline color
 	if tb.Outline != nil && tb.Outline.Thickness > 0 {
-		outColor := Color{
-			R: tb.Outline.Color.R * n.Color.R,
-			G: tb.Outline.Color.G * n.Color.G,
-			B: tb.Outline.Color.B * n.Color.B,
-			A: tb.Outline.Color.A * n.Color.A * alpha,
+		outColor := color32{
+			R: float32(tb.Outline.Color.R * n.Color.R),
+			G: float32(tb.Outline.Color.G * n.Color.G),
+			B: float32(tb.Outline.Color.B * n.Color.B),
+			A: float32(tb.Outline.Color.A * n.Color.A * alpha),
 		}
 		t := tb.Outline.Thickness
 		offsets := [8][2]float64{
@@ -666,7 +666,7 @@ func emitBitmapTextCommands(tb *TextBlock, n *Node, commands []RenderCommand, tr
 					glyphTransform := composeGlyphTransform(n.worldTransform, gp.x+off[0], gp.y+lineY+off[1])
 					commands = append(commands, RenderCommand{
 						Type:          CommandSprite,
-						Transform:     glyphTransform,
+						Transform:     affine32(glyphTransform),
 						TextureRegion: gp.region,
 						Color:         outColor,
 						BlendMode:     n.BlendMode,
@@ -687,7 +687,7 @@ func emitBitmapTextCommands(tb *TextBlock, n *Node, commands []RenderCommand, tr
 			glyphTransform := composeGlyphTransform(n.worldTransform, gp.x, gp.y+lineY)
 			commands = append(commands, RenderCommand{
 				Type:          CommandSprite,
-				Transform:     glyphTransform,
+				Transform:     affine32(glyphTransform),
 				TextureRegion: gp.region,
 				Color:         color,
 				BlendMode:     n.BlendMode,
@@ -783,7 +783,7 @@ func emitTTFTextCommand(tb *TextBlock, n *Node, commands []RenderCommand, treeOr
 	*treeOrder++
 	commands = append(commands, RenderCommand{
 		Type:      CommandSprite,
-		Transform: transform,
+		Transform: affine32(transform),
 		TextureRegion: TextureRegion{
 			Page:      uint16(tb.ttfPage),
 			X:         0,
@@ -793,7 +793,7 @@ func emitTTFTextCommand(tb *TextBlock, n *Node, commands []RenderCommand, treeOr
 			OriginalW: uint16(w),
 			OriginalH: uint16(h),
 		},
-		Color:       Color{n.Color.R, n.Color.G, n.Color.B, n.Color.A * alpha},
+		Color:       color32{float32(n.Color.R), float32(n.Color.G), float32(n.Color.B), float32(n.Color.A * alpha)},
 		BlendMode:   n.BlendMode,
 		RenderLayer: n.RenderLayer,
 		GlobalOrder: n.GlobalOrder,

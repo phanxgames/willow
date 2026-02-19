@@ -166,10 +166,10 @@ func TestLifetimeInterpolation(t *testing.T) {
 
 	// At t≈0: scale=2, alpha=1, color=(1,0,0)
 	// (particle just spawned, not yet updated — properties are at start values)
-	assertNear(t, "scale@t0", p.scale, 2.0)
-	assertNear(t, "alpha@t0", p.alpha, 1.0)
-	assertNear(t, "colorR@t0", p.colorR, 1.0)
-	assertNear(t, "colorG@t0", p.colorG, 0.0)
+	assertNear(t, "scale@t0", float64(p.scale), 2.0)
+	assertNear(t, "alpha@t0", float64(p.alpha), 1.0)
+	assertNear(t, "colorR@t0", float64(p.colorR), 1.0)
+	assertNear(t, "colorG@t0", float64(p.colorG), 0.0)
 
 	// Advance to 50% lifetime. Newly spawned particles don't get their
 	// first dt subtracted (spawned after the update loop), so the next
@@ -177,10 +177,10 @@ func TestLifetimeInterpolation(t *testing.T) {
 	e.update(0.5)
 	t50 := 1.0 - p.life/p.maxLife
 	assertNear(t, "t~0.5", t50, 0.5)
-	assertNear(t, "scale@t0.5", p.scale, lerp(2, 0, t50))
-	assertNear(t, "alpha@t0.5", p.alpha, lerp(1, 0, t50))
-	assertNear(t, "colorR@t0.5", p.colorR, lerp(1, 0, t50))
-	assertNear(t, "colorG@t0.5", p.colorG, lerp(0, 1, t50))
+	assertNear(t, "scale@t0.5", float64(p.scale), lerp(2, 0, t50))
+	assertNear(t, "alpha@t0.5", float64(p.alpha), lerp(1, 0, t50))
+	assertNear(t, "colorR@t0.5", float64(p.colorR), lerp(1, 0, t50))
+	assertNear(t, "colorG@t0.5", float64(p.colorG), lerp(0, 1, t50))
 }
 
 func TestMaxParticlesCap(t *testing.T) {
@@ -276,7 +276,7 @@ func TestUpdateParticlesRecursive(t *testing.T) {
 	emitter2.Emitter.Start()
 	child.AddChild(emitter2)
 
-	updateParticles(root, 0.1)
+	updateNodesAndParticles(root, 0.1)
 
 	if emitter1.Emitter.AliveCount() == 0 {
 		t.Error("emitter1 should have particles after updateParticles")

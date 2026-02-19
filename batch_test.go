@@ -101,7 +101,7 @@ func TestAppendSpriteQuad_NonRotated(t *testing.T) {
 			Page: 0, X: 10, Y: 20, Width: 32, Height: 16,
 			OriginalW: 32, OriginalH: 16,
 		},
-		Transform: identityTransform,
+		Transform: identityTransform32,
 	}
 	s.appendSpriteQuad(cmd)
 
@@ -158,7 +158,7 @@ func TestAppendSpriteQuad_Rotated(t *testing.T) {
 			OriginalW: 32, OriginalH: 16,
 			Rotated: true,
 		},
-		Transform: identityTransform,
+		Transform: identityTransform32,
 	}
 	s.appendSpriteQuad(cmd)
 
@@ -195,7 +195,7 @@ func TestAppendSpriteQuad_TrimOffset(t *testing.T) {
 			OriginalW: 20, OriginalH: 20,
 			OffsetX: 5, OffsetY: 3,
 		},
-		Transform: identityTransform,
+		Transform: identityTransform32,
 	}
 	s.appendSpriteQuad(cmd)
 
@@ -214,8 +214,8 @@ func TestAppendSpriteQuad_ZeroColor(t *testing.T) {
 		TextureRegion: TextureRegion{
 			Page: 0, Width: 10, Height: 10, OriginalW: 10, OriginalH: 10,
 		},
-		Transform: identityTransform,
-		Color:     Color{0, 0, 0, 0}, // zero sentinel
+		Transform: identityTransform32,
+		Color:     color32{0, 0, 0, 0}, // zero sentinel
 	}
 	s.appendSpriteQuad(cmd)
 
@@ -233,8 +233,8 @@ func TestAppendSpriteQuad_PremultipliedColor(t *testing.T) {
 		TextureRegion: TextureRegion{
 			Page: 0, Width: 10, Height: 10, OriginalW: 10, OriginalH: 10,
 		},
-		Transform: identityTransform,
-		Color:     Color{1.0, 0.5, 0.25, 0.5},
+		Transform: identityTransform32,
+		Color:     color32{1.0, 0.5, 0.25, 0.5},
 	}
 	s.appendSpriteQuad(cmd)
 
@@ -253,7 +253,7 @@ func TestAppendSpriteQuad_Transform(t *testing.T) {
 		TextureRegion: TextureRegion{
 			Page: 0, Width: 10, Height: 10, OriginalW: 10, OriginalH: 10,
 		},
-		Transform: [6]float64{2, 0, 0, 2, 100, 200},
+		Transform: [6]float32{2, 0, 0, 2, 100, 200},
 	}
 	s.appendSpriteQuad(cmd)
 

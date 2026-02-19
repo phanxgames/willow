@@ -1,6 +1,7 @@
 package willow
 
 import (
+	"math"
 	"sort"
 	"testing"
 )
@@ -125,7 +126,9 @@ func TestWorldAlphaInCommand(t *testing.T) {
 		t.Fatalf("commands = %d, want 1", len(s.commands))
 	}
 	// worldAlpha = 0.5 * 0.8 = 0.4, Color.A = 1.0 * 0.4 = 0.4
-	assertNear(t, "cmd.Color.A", s.commands[0].Color.A, 0.4)
+	if got := float64(s.commands[0].Color.A); math.Abs(got-0.4) > 1e-6 {
+		t.Errorf("cmd.Color.A = %v, want ~0.4", got)
+	}
 }
 
 // --- Sorting ---

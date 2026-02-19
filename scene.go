@@ -50,7 +50,7 @@ const (
 	BatchModeImmediate
 )
 
-const defaultCommandCap = 1024
+const defaultCommandCap = 4096
 
 // Scene is the top-level object that owns the node tree, cameras, input state,
 // and render buffers.
@@ -222,20 +222,26 @@ func (s *Scene) Update() {
 	for _, cam := range s.cameras {
 		cam.update(dt)
 	}
-	updateParticles(s.root, float64(dt))
-	updateNodes(s.root, float64(dt))
+	updateNodesAndParticles(s.root, float64(dt))
 	if s.testRunner != nil {
 		s.testRunner.step(s)
 	}
 	s.processInput()
 }
 
-func updateNodes(n *Node, dt float64) {
+func updateNodesAndParticles(n *Node, dt float64) {
 	if n.OnUpdate != nil {
 		n.OnUpdate(dt)
 	}
+	if n.Type == NodeTypeParticleEmitter && n.Emitter != nil {
+		if n.Emitter.config.WorldSpace {
+			n.Emitter.worldX = n.worldTransform[4]
+			n.Emitter.worldY = n.worldTransform[5]
+		}
+		n.Emitter.update(dt)
+	}
 	for _, child := range n.children {
-		updateNodes(child, dt)
+		updateNodesAndParticles(child, dt)
 	}
 }
 

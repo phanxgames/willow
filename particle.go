@@ -11,21 +11,21 @@ type particle struct {
 	vx, vy     float64
 	life       float64 // remaining lifetime in seconds
 	maxLife    float64 // initial lifetime (for computing t)
-	startScale float64
-	endScale   float64
-	scale      float64
-	startAlpha float64
-	endAlpha   float64
-	alpha      float64
-	startR     float64
-	startG     float64
-	startB     float64
-	endR       float64
-	endG       float64
-	endB       float64
-	colorR     float64
-	colorG     float64
-	colorB     float64
+	startScale float32
+	endScale   float32
+	scale      float32
+	startAlpha float32
+	endAlpha   float32
+	alpha      float32
+	startR     float32
+	startG     float32
+	startB     float32
+	endR       float32
+	endG       float32
+	endB       float32
+	colorR     float32
+	colorG     float32
+	colorB     float32
 }
 
 // EmitterConfig controls how particles are spawned and behave.
@@ -145,12 +145,12 @@ func (e *ParticleEmitter) update(dt float64) {
 		p.y += p.vy * dt
 
 		// Interpolate properties.
-		t := 1.0 - p.life/p.maxLife
-		p.scale = lerp(p.startScale, p.endScale, t)
-		p.alpha = lerp(p.startAlpha, p.endAlpha, t)
-		p.colorR = lerp(p.startR, p.endR, t)
-		p.colorG = lerp(p.startG, p.endG, t)
-		p.colorB = lerp(p.startB, p.endB, t)
+		t := float32(1.0 - p.life/p.maxLife)
+		p.scale = lerp32(p.startScale, p.endScale, t)
+		p.alpha = lerp32(p.startAlpha, p.endAlpha, t)
+		p.colorR = lerp32(p.startR, p.endR, t)
+		p.colorG = lerp32(p.startG, p.endG, t)
+		p.colorB = lerp32(p.startB, p.endB, t)
 
 		i++
 	}
@@ -190,20 +190,20 @@ func (e *ParticleEmitter) spawnParticle() {
 	}
 	p.maxLife = p.life
 
-	p.startScale = e.config.StartScale.Random()
-	p.endScale = e.config.EndScale.Random()
+	p.startScale = float32(e.config.StartScale.Random())
+	p.endScale = float32(e.config.EndScale.Random())
 	p.scale = p.startScale
 
-	p.startAlpha = e.config.StartAlpha.Random()
-	p.endAlpha = e.config.EndAlpha.Random()
+	p.startAlpha = float32(e.config.StartAlpha.Random())
+	p.endAlpha = float32(e.config.EndAlpha.Random())
 	p.alpha = p.startAlpha
 
-	p.startR = float64(e.config.StartColor.R)
-	p.startG = float64(e.config.StartColor.G)
-	p.startB = float64(e.config.StartColor.B)
-	p.endR = float64(e.config.EndColor.R)
-	p.endG = float64(e.config.EndColor.G)
-	p.endB = float64(e.config.EndColor.B)
+	p.startR = float32(e.config.StartColor.R)
+	p.startG = float32(e.config.StartColor.G)
+	p.startB = float32(e.config.StartColor.B)
+	p.endR = float32(e.config.EndColor.R)
+	p.endG = float32(e.config.EndColor.G)
+	p.endB = float32(e.config.EndColor.B)
 	p.colorR = p.startR
 	p.colorG = p.startG
 	p.colorB = p.startB
@@ -211,23 +211,13 @@ func (e *ParticleEmitter) spawnParticle() {
 	e.alive++
 }
 
-// updateParticles walks the node tree and updates all particle emitters.
-func updateParticles(n *Node, dt float64) {
-	if n.Type == NodeTypeParticleEmitter && n.Emitter != nil {
-		if n.Emitter.config.WorldSpace {
-			// Store the emitter's world position so particles spawn in world space.
-			n.Emitter.worldX = n.worldTransform[4]
-			n.Emitter.worldY = n.worldTransform[5]
-		}
-		n.Emitter.update(dt)
-	}
-	for _, child := range n.children {
-		updateParticles(child, dt)
-	}
-}
-
 // lerp linearly interpolates between a and b by t.
 func lerp(a, b, t float64) float64 {
+	return a + (b-a)*t
+}
+
+// lerp32 linearly interpolates between a and b by t (float32).
+func lerp32(a, b, t float32) float32 {
 	return a + (b-a)*t
 }
 

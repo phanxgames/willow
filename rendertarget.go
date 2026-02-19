@@ -288,8 +288,8 @@ func renderSpecialSubtreeNode(s *Scene, n *Node, localTransform [6]float64, alph
 	*treeOrder++
 	s.commands = append(s.commands, RenderCommand{
 		Type:        CommandSprite,
-		Transform:   adjustedTransform,
-		Color:       Color{1, 1, 1, alpha},
+		Transform:   affine32(adjustedTransform),
+		Color:       color32{1, 1, 1, float32(alpha)},
 		BlendMode:   n.BlendMode,
 		RenderLayer: n.RenderLayer,
 		GlobalOrder: n.GlobalOrder,
@@ -303,13 +303,14 @@ func emitNodeCommand(s *Scene, n *Node, transform [6]float64, alpha float64, tre
 	if !n.Renderable {
 		return
 	}
+	t32 := affine32(transform)
 	switch n.Type {
 	case NodeTypeSprite:
 		*treeOrder++
 		cmd := RenderCommand{
 			Type:        CommandSprite,
-			Transform:   transform,
-			Color:       Color{n.Color.R, n.Color.G, n.Color.B, n.Color.A * alpha},
+			Transform:   t32,
+			Color:       color32{float32(n.Color.R), float32(n.Color.G), float32(n.Color.B), float32(n.Color.A * alpha)},
 			BlendMode:   n.BlendMode,
 			RenderLayer: n.RenderLayer,
 			GlobalOrder: n.GlobalOrder,
@@ -331,7 +332,7 @@ func emitNodeCommand(s *Scene, n *Node, transform [6]float64, alpha float64, tre
 		*treeOrder++
 		s.commands = append(s.commands, RenderCommand{
 			Type:        CommandMesh,
-			Transform:   transform,
+			Transform:   t32,
 			BlendMode:   n.BlendMode,
 			RenderLayer: n.RenderLayer,
 			GlobalOrder: n.GlobalOrder,
@@ -350,9 +351,9 @@ func emitNodeCommand(s *Scene, n *Node, transform [6]float64, alpha float64, tre
 			}
 			s.commands = append(s.commands, RenderCommand{
 				Type:               CommandParticle,
-				Transform:          particleTransform,
+				Transform:          affine32(particleTransform),
 				TextureRegion:      n.TextureRegion,
-				Color:              Color{n.Color.R, n.Color.G, n.Color.B, n.Color.A * alpha},
+				Color:              color32{float32(n.Color.R), float32(n.Color.G), float32(n.Color.B), float32(n.Color.A * alpha)},
 				BlendMode:          n.BlendMode,
 				RenderLayer:        n.RenderLayer,
 				GlobalOrder:        n.GlobalOrder,

@@ -53,12 +53,12 @@ func (s *Scene) submitSprite(target *ebiten.Image, cmd *RenderCommand, op *ebite
 		op.GeoM.Reset()
 		op.GeoM.Concat(commandGeoM(cmd))
 		op.ColorScale.Reset()
-		a := float32(cmd.Color.A)
+		a := cmd.Color.A
 		if a == 0 && cmd.Color.R == 0 && cmd.Color.G == 0 && cmd.Color.B == 0 {
 			a = 1
 			op.ColorScale.Scale(1, 1, 1, 1)
 		} else {
-			op.ColorScale.Scale(float32(cmd.Color.R)*a, float32(cmd.Color.G)*a, float32(cmd.Color.B)*a, a)
+			op.ColorScale.Scale(cmd.Color.R*a, cmd.Color.G*a, cmd.Color.B*a, a)
 		}
 		op.Blend = cmd.BlendMode.EbitenBlend()
 		target.DrawImage(cmd.directImage, op)
@@ -107,12 +107,12 @@ func (s *Scene) submitSprite(target *ebiten.Image, cmd *RenderCommand, op *ebite
 
 	// Apply premultiplied color scale
 	op.ColorScale.Reset()
-	a := float32(cmd.Color.A)
+	a := cmd.Color.A
 	if a == 0 && cmd.Color.R == 0 && cmd.Color.G == 0 && cmd.Color.B == 0 {
 		a = 1
 		op.ColorScale.Scale(1, 1, 1, 1)
 	} else {
-		op.ColorScale.Scale(float32(cmd.Color.R)*a, float32(cmd.Color.G)*a, float32(cmd.Color.B)*a, a)
+		op.ColorScale.Scale(cmd.Color.R*a, cmd.Color.G*a, cmd.Color.B*a, a)
 	}
 
 	op.Blend = cmd.BlendMode.EbitenBlend()
@@ -174,7 +174,7 @@ func (s *Scene) submitParticles(target *ebiten.Image, cmd *RenderCommand, op *eb
 
 		// Per-particle scale (around sprite center).
 		op.GeoM.Translate(-float64(r.OriginalW)/2, -float64(r.OriginalH)/2)
-		op.GeoM.Scale(p.scale, p.scale)
+		op.GeoM.Scale(float64(p.scale), float64(p.scale))
 		op.GeoM.Translate(float64(r.OriginalW)/2, float64(r.OriginalH)/2)
 
 		// Per-particle translation.
@@ -186,10 +186,10 @@ func (s *Scene) submitParticles(target *ebiten.Image, cmd *RenderCommand, op *eb
 		op.GeoM.Concat(baseGeoM)
 
 		// Per-particle color: particle color * emitter node color, particle alpha * emitter worldAlpha.
-		cr := float32(p.colorR * float64(cmd.Color.R))
-		cg := float32(p.colorG * float64(cmd.Color.G))
-		cb := float32(p.colorB * float64(cmd.Color.B))
-		ca := float32(p.alpha * float64(cmd.Color.A))
+		cr := p.colorR * cmd.Color.R
+		cg := p.colorG * cmd.Color.G
+		cb := p.colorB * cmd.Color.B
+		ca := p.alpha * cmd.Color.A
 		op.ColorScale.Reset()
 		op.ColorScale.Scale(cr*ca, cg*ca, cb*ca, ca)
 
@@ -214,12 +214,12 @@ func (s *Scene) submitMesh(target *ebiten.Image, cmd *RenderCommand) {
 // commandGeoM converts a command's [6]float64 transform into an ebiten.GeoM.
 func commandGeoM(cmd *RenderCommand) ebiten.GeoM {
 	var m ebiten.GeoM
-	m.SetElement(0, 0, cmd.Transform[0])
-	m.SetElement(1, 0, cmd.Transform[1])
-	m.SetElement(0, 1, cmd.Transform[2])
-	m.SetElement(1, 1, cmd.Transform[3])
-	m.SetElement(0, 2, cmd.Transform[4])
-	m.SetElement(1, 2, cmd.Transform[5])
+	m.SetElement(0, 0, float64(cmd.Transform[0]))
+	m.SetElement(1, 0, float64(cmd.Transform[1]))
+	m.SetElement(0, 1, float64(cmd.Transform[2]))
+	m.SetElement(1, 1, float64(cmd.Transform[3]))
+	m.SetElement(0, 2, float64(cmd.Transform[4]))
+	m.SetElement(1, 2, float64(cmd.Transform[5]))
 	return m
 }
 
@@ -281,25 +281,14 @@ func (s *Scene) appendSpriteQuad(cmd *RenderCommand) {
 	t := &cmd.Transform // [a, b, c, d, tx, ty]
 
 	// Local quad corners before world transform.
-	// Visual dimensions are always (r.Width, r.Height) for non-rotated,
-	// and (r.Width, r.Height) for rotated (the original authored size).
-	// Trim offset shifts the local origin.
-	ox := float64(r.OffsetX)
-	oy := float64(r.OffsetY)
-	var w, h float64
-	if r.Rotated {
-		// Rotated region: visual dimensions are the original Width × Height.
-		// The atlas stores them as Height × Width (swapped).
-		w = float64(r.Width)
-		h = float64(r.Height)
-	} else {
-		w = float64(r.Width)
-		h = float64(r.Height)
-	}
+	ox := float32(r.OffsetX)
+	oy := float32(r.OffsetY)
+	w := float32(r.Width)
+	h := float32(r.Height)
 
 	// 4 local positions: TL, TR, BL, BR
-	lx := [4]float64{ox, ox + w, ox, ox + w}
-	ly := [4]float64{oy, oy, oy + h, oy + h}
+	lx := [4]float32{ox, ox + w, ox, ox + w}
+	ly := [4]float32{oy, oy, oy + h, oy + h}
 
 	// Apply affine transform: dx = a*lx + c*ly + tx, dy = b*lx + d*ly + ty
 	a, b, c, d, tx, ty := t[0], t[1], t[2], t[3], t[4], t[5]
@@ -331,20 +320,20 @@ func (s *Scene) appendSpriteQuad(cmd *RenderCommand) {
 
 	// Premultiplied RGBA. Zero-color sentinel → opaque white.
 	var cr, cg, cb, ca float32
-	ca = float32(cmd.Color.A)
+	ca = cmd.Color.A
 	if ca == 0 && cmd.Color.R == 0 && cmd.Color.G == 0 && cmd.Color.B == 0 {
 		cr, cg, cb, ca = 1, 1, 1, 1
 	} else {
-		cr = float32(cmd.Color.R) * ca
-		cg = float32(cmd.Color.G) * ca
-		cb = float32(cmd.Color.B) * ca
+		cr = cmd.Color.R * ca
+		cg = cmd.Color.G * ca
+		cb = cmd.Color.B * ca
 	}
 
 	base := uint32(len(s.batchVerts))
 
 	for i := 0; i < 4; i++ {
-		dx := float32(a*lx[i] + c*ly[i] + tx)
-		dy := float32(b*lx[i] + d*ly[i] + ty)
+		dx := a*lx[i] + c*ly[i] + tx
+		dy := b*lx[i] + d*ly[i] + ty
 		s.batchVerts = append(s.batchVerts, ebiten.Vertex{
 			DstX:   dx,
 			DstY:   dy,
@@ -428,9 +417,9 @@ func (s *Scene) submitParticlesBatched(target *ebiten.Image, cmd *RenderCommand)
 		}
 	}
 
-	// Base transform components.
+	// Base transform components (widen to float64 for particle position math).
 	bt := &cmd.Transform
-	ba, bb, bc, bd, btx, bty := bt[0], bt[1], bt[2], bt[3], bt[4], bt[5]
+	ba, bb, bc, bd, btx, bty := float64(bt[0]), float64(bt[1]), float64(bt[2]), float64(bt[3]), float64(bt[4]), float64(bt[5])
 
 	ow := float64(r.OriginalW)
 	oh := float64(r.OriginalH)
@@ -439,6 +428,28 @@ func (s *Scene) submitParticlesBatched(target *ebiten.Image, cmd *RenderCommand)
 	offX := float64(r.OffsetX)
 	offY := float64(r.OffsetY)
 
+	// Precompute emitter-constant UV coordinates and quad dimensions outside the particle loop.
+	var psx, psy [4]float32
+	if cmd.directImage != nil {
+		psx = [4]float32{su0, su1, su0, su1}
+		psy = [4]float32{sv0, sv0, sv1, sv1}
+	} else if r.Rotated {
+		psx = [4]float32{su1, su1, su0, su0}
+		psy = [4]float32{sv0, sv1, sv0, sv1}
+	} else {
+		psx = [4]float32{su0, su1, su0, su1}
+		psy = [4]float32{sv0, sv0, sv1, sv1}
+	}
+
+	var qw, qh float64
+	if cmd.directImage != nil {
+		qw = float64(su1 - su0)
+		qh = float64(sv1 - sv0)
+	} else {
+		qw = float64(r.Width)
+		qh = float64(r.Height)
+	}
+
 	s.batchVerts = s.batchVerts[:0]
 	s.batchInds = s.batchInds[:0]
 
@@ -446,26 +457,15 @@ func (s *Scene) submitParticlesBatched(target *ebiten.Image, cmd *RenderCommand)
 		p := &e.particles[i]
 
 		// Build per-particle local→world transform.
-		// Steps (matching the immediate-mode path):
-		// 1. Trim offset
-		// 2. Scale around sprite center: translate(-halfW, -halfH), scale(s,s), translate(halfW, halfH)
-		// 3. Translate by particle position (p.x, p.y)
-		// 4. Concat base transform
+		// Combined local transform:
+		// scale=s, tx=(offX - halfW)*s + halfW + p.x, ty=(offY - halfH)*s + halfH + p.y
 
-		// Combined local transform for steps 1-3:
-		// After offset: (x + offX, y + offY)
-		// After center-scale: ((x + offX - halfW)*s + halfW, (y + offY - halfH)*s + halfH)
-		//                   = (x*s + (offX - halfW)*s + halfW, y*s + (offY - halfH)*s + halfH)
-		// After particle translate: above + (p.x, p.y)
-		// Local transform is: scale=s, tx=(offX - halfW)*s + halfW + p.x, ty=(offY - halfH)*s + halfH + p.y
-
-		ps := p.scale
+		ps := float64(p.scale)
 		localTx := (offX-halfW)*ps + halfW + p.x
 		localTy := (offY-halfH)*ps + halfH + p.y
 
 		// Concat with base: M_base * M_local
 		// M_local = [ps, 0, 0, ps, localTx, localTy]
-		// Result: [ba*ps, bb*ps, bc*ps, bd*ps, ba*localTx + bc*localTy + btx, bb*localTx + bd*localTy + bty]
 		fa := ba * ps
 		fb := bb * ps
 		fc := bc * ps
@@ -473,40 +473,16 @@ func (s *Scene) submitParticlesBatched(target *ebiten.Image, cmd *RenderCommand)
 		ftx := ba*localTx + bc*localTy + btx
 		fty := bb*localTx + bd*localTy + bty
 
-		// Handle rotated regions in UVs.
-		var psx, psy [4]float32
-		if cmd.directImage != nil {
-			// Direct image: simple UV mapping.
-			psx = [4]float32{su0, su1, su0, su1}
-			psy = [4]float32{sv0, sv0, sv1, sv1}
-		} else if r.Rotated {
-			psx = [4]float32{su1, su1, su0, su0}
-			psy = [4]float32{sv0, sv1, sv0, sv1}
-		} else {
-			psx = [4]float32{su0, su1, su0, su1}
-			psy = [4]float32{sv0, sv0, sv1, sv1}
-		}
-
-		// Local quad: use the visual sprite dimensions (Width × Height for non-rotated).
-		var qw, qh float64
-		if cmd.directImage != nil {
-			qw = float64(su1 - su0)
-			qh = float64(sv1 - sv0)
-		} else {
-			qw = float64(r.Width)
-			qh = float64(r.Height)
-		}
-
 		// 4 local positions: (0,0), (qw,0), (0,qh), (qw,qh)
 		// After full transform: dx = fa*lx + fc*ly + ftx, dy = fb*lx + fd*ly + fty
 		qlx := [4]float64{0, qw, 0, qw}
 		qly := [4]float64{0, 0, qh, qh}
 
 		// Per-particle color
-		cr := float32(p.colorR*float64(cmd.Color.R)) * float32(p.alpha*float64(cmd.Color.A))
-		cg := float32(p.colorG*float64(cmd.Color.G)) * float32(p.alpha*float64(cmd.Color.A))
-		cb := float32(p.colorB*float64(cmd.Color.B)) * float32(p.alpha*float64(cmd.Color.A))
-		ca := float32(p.alpha * float64(cmd.Color.A))
+		ca := p.alpha * cmd.Color.A
+		cr := p.colorR * cmd.Color.R * ca
+		cg := p.colorG * cmd.Color.G * ca
+		cb := p.colorB * cmd.Color.B * ca
 
 		base := uint32(len(s.batchVerts))
 

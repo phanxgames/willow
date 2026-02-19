@@ -159,11 +159,128 @@ on alternating pages (10 page swaps total) — simulates a tilemap with two spri
 
 ---
 
+## Raw Ebitengine Baselines (No Scene Graph)
+
+Pre-computed transforms, no traversal, no sorting — pure draw call cost.
+
+### Single Page (10K sprites)
+
+| Method | Iters | ns/op | B/op | allocs/op |
+|--------|-------|-------|------|-----------|
+| Raw DrawImage | 580 | 2,172,133 | 5,865,988 | 30,000 |
+| Raw DrawImage | 658 | 1,937,196 | 5,851,216 | 30,000 |
+| Raw DrawImage | 699 | 1,927,040 | 5,893,034 | 30,000 |
+| Raw DrawTriangles32 | 8,857 | 312,543 | 2,171,417 | 3 |
+| Raw DrawTriangles32 | 3,120 | 338,148 | 2,171,817 | 3 |
+| Raw DrawTriangles32 | 3,181 | 335,409 | 2,171,805 | 3 |
+
+### Real-World Atlas (10K sprites, 2x 4096x4096, runs of 1000)
+
+| Method | Iters | ns/op | B/op | allocs/op |
+|--------|-------|-------|------|-----------|
+| Raw DrawImage | 588 | 2,045,541 | 5,800,060 | 30,000 |
+| Raw DrawImage | 642 | 2,098,019 | 5,863,812 | 30,000 |
+| Raw DrawImage | 496 | 2,546,819 | 6,175,142 | 30,000 |
+| Raw DrawTriangles32 | 3,375 | 376,328 | 2,215,098 | 30 |
+| Raw DrawTriangles32 | 2,898 | 349,566 | 2,215,108 | 30 |
+| Raw DrawTriangles32 | 3,274 | 346,600 | 2,215,100 | 30 |
+
+### Mixed (5K sprites + 1K particle-equiv)
+
+| Method | Iters | ns/op | B/op | allocs/op |
+|--------|-------|-------|------|-----------|
+| Raw DrawImage | 823 | 1,547,085 | 3,216,003 | 18,000 |
+| Raw DrawImage | 696 | 1,688,278 | 3,942,137 | 18,000 |
+| Raw DrawImage | 806 | 1,562,178 | 3,216,003 | 18,000 |
+
+### Particles (1K)
+
+| Method | Iters | ns/op | B/op | allocs/op |
+|--------|-------|-------|------|-----------|
+| Raw DrawImage | 4,416 | 272,855 | 679,058 | 3,000 |
+| Raw DrawImage | 4,036 | 263,270 | 536,000 | 3,000 |
+| Raw DrawImage | 4,808 | 263,093 | 536,000 | 3,000 |
+| Raw DrawTriangles32 | 33,314 | 38,575 | 221,509 | 3 |
+| Raw DrawTriangles32 | 29,407 | 36,872 | 221,510 | 3 |
+| Raw DrawTriangles32 | 34,359 | 35,093 | 221,509 | 3 |
+
+---
+
+## Willow vs Raw Ebitengine (Summary)
+
+### Single Page (10K sprites)
+
+| Layer | avg ns/op | vs Raw DrawImage | vs Raw DT32 |
+|-------|-----------|-----------------|-------------|
+| Raw DrawTriangles32 | ~329K | 6.1x faster | — |
+| Raw DrawImage | ~2,012K | — | 6.1x slower |
+| **Willow Coalesced** | **~1,984K** | **~1% faster** | 6.0x slower |
+| Willow Immediate | ~3,986K | 2.0x slower | 12.1x slower |
+
+### Real-World Atlas (10K sprites, 2x 4096x4096)
+
+| Layer | avg ns/op | vs Raw DrawImage | vs Raw DT32 |
+|-------|-----------|-----------------|-------------|
+| Raw DrawTriangles32 | ~357K | 6.3x faster | — |
+| Raw DrawImage | ~2,230K | — | 6.3x slower |
+| **Willow Coalesced** | **~1,993K** | **11% faster** | 5.6x slower |
+| Willow Immediate | ~4,121K | 1.8x slower | 11.5x slower |
+
+### Mixed (5K sprites + particles)
+
+| Layer | avg ns/op | vs Raw DrawImage |
+|-------|-----------|-----------------|
+| Raw DrawImage | ~1,599K | — |
+| **Willow Coalesced** | **~1,969K** | 1.2x slower |
+| Willow Immediate | ~2,075K | 1.3x slower |
+
+### Particles (1K)
+
+| Layer | avg ns/op | vs Raw DrawImage | vs Raw DT32 |
+|-------|-----------|-----------------|-------------|
+| Raw DrawTriangles32 | ~37K | 7.2x faster | — |
+| Raw DrawImage | ~266K | — | 7.2x slower |
+| **Willow Coalesced** | **~49K** | **5.4x faster** | 1.3x slower |
+| Willow Immediate | ~259K | 1.0x (same) | 7.0x slower |
+
+---
+
+## Micro-Optimizations Applied
+
+After establishing baselines, three micro-optimizations were evaluated:
+
+### 1. Sincos Skip (kept)
+
+Skip `math.Sincos()` in `computeLocalTransform` when `Rotation == 0` (the common case for static sprites).
+
+```go
+if n.Rotation != 0 {
+    sin, cos = math.Sincos(n.Rotation)
+} else {
+    cos = 1
+}
+```
+
+Benefit is sub-microsecond per node — doesn't show in noisy 10K-sprite benchmarks, but free for the branch predictor in the hot path.
+
+### 2. Default Command Capacity Bump (kept)
+
+`defaultCommandCap` raised from 1024 to 4096, eliminating one early slice reallocation for scenes with >1024 renderable nodes. Zero cost (just a larger initial `make`).
+
+### 3. Index Sort (reverted)
+
+Attempted replacing value-based merge sort (moving 144-byte `RenderCommand` structs) with index-based sort (moving 4-byte `int32` indices). **Result: 4x regression.** The indirection in `cmds[src[i]]` during merge comparisons destroyed cache locality. Sequential access through contiguous value arrays is faster than random access via indices, even when moving more bytes. Reverted.
+
+---
+
 ## Key Takeaways
 
-1. **Single page (ideal):** Coalesced is ~2x faster and eliminates virtually all per-frame allocations (30,000 -> 3).
-2. **Particles:** Coalesced is ~5x faster for particle rendering.
+1. **Single page (ideal):** Coalesced is ~2x faster than Immediate and eliminates virtually all per-frame allocations (30,000 -> 3).
+2. **Particles:** Coalesced is ~5x faster than Immediate. Only 1.3x slower than hand-rolled raw DrawTriangles32.
 3. **Multi-page realistic (128x128):** Coalesced still wins by ~7% even with 4 page breaks.
-4. **Mixed scenes:** Coalesced ~5% faster with 17% fewer allocations despite sprite/particle interleaving.
-5. **Real-world atlas (4096x4096):** Coalesced is **2.1x faster** with 1000x fewer allocs. Runs of 1,000 sprites per page swap are very batchable.
+4. **Mixed scenes:** Coalesced ~5% faster than Immediate with 17% fewer allocations despite sprite/particle interleaving.
+5. **Real-world atlas (4096x4096):** Coalesced is **2.1x faster** than Immediate with 1000x fewer allocs. **11% faster than raw DrawImage** (scene graph overhead is negative thanks to batching).
 6. **Worst case (every sprite breaks batch):** Coalesced ~5% slower — acceptable regression for a pathological case that doesn't occur in practice.
+7. **Willow Coalesced vs Raw DrawImage:** Willow's scene graph adds ~0-20% overhead vs hand-writing DrawImage calls — but because it batches automatically, it's often **faster** than raw DrawImage.
+8. **Willow Coalesced vs Raw DrawTriangles32:** The theoretical floor is ~5-6x faster (pure pre-computed vertex submission). The gap is Willow's traversal + transform computation + sorting + vertex building — the cost of a retained-mode scene graph.
+9. **Particles are nearly optimal:** Willow Coalesced particle rendering is only 1.3x slower than raw DrawTriangles32 — the scene graph overhead is minimal for particle batches.
