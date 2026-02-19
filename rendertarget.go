@@ -1,6 +1,7 @@
 package willow
 
 import (
+	"image"
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -35,7 +36,10 @@ func (p *renderTexturePool) Acquire(w, h int) *ebiten.Image {
 		}
 	}
 
-	return ebiten.NewImage(pw, ph)
+	return ebiten.NewImageWithOptions(
+		image.Rect(0, 0, pw, ph),
+		&ebiten.NewImageOptions{Unmanaged: true},
+	)
 }
 
 // Release returns an image to the pool for reuse. The image is cleared on

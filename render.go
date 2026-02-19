@@ -564,12 +564,13 @@ func (s *Scene) replayStaticCache(n *Node, treeOrder *int) {
 
 	for i := range sc.cmds {
 		*treeOrder++
-		cmd := sc.cmds[i].cmd
-		cmd.Transform = multiplyAffine32(containerTransform32, sc.cmds[i].cmd.Transform)
-		cmd.Color.R = sc.cmds[i].cmd.Color.R * alpha32
-		cmd.Color.G = sc.cmds[i].cmd.Color.G * alpha32
-		cmd.Color.B = sc.cmds[i].cmd.Color.B * alpha32
-		cmd.Color.A = sc.cmds[i].cmd.Color.A * alpha32
+		src := &sc.cmds[i].cmd
+		cmd := *src
+		cmd.Transform = multiplyAffine32(containerTransform32, src.Transform)
+		cmd.Color.R = src.Color.R * alpha32
+		cmd.Color.G = src.Color.G * alpha32
+		cmd.Color.B = src.Color.B * alpha32
+		cmd.Color.A = src.Color.A * alpha32
 		cmd.treeOrder = *treeOrder
 		s.commands = append(s.commands, cmd)
 	}

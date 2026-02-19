@@ -465,26 +465,17 @@ func (s *Scene) submitParticlesBatched(target *ebiten.Image, cmd *RenderCommand)
 		p := &e.particles[i]
 
 		// Build per-particle local→world transform.
-		// Combined local transform:
-		// scale=s, tx=(offX - halfW)*s + halfW + p.x, ty=(offY - halfH)*s + halfH + p.y
-
 		ps := float64(p.scale)
 		localTx := (offX-halfW)*ps + halfW + p.x
 		localTy := (offY-halfH)*ps + halfH + p.y
 
 		// Concat with base: M_base * M_local
-		// M_local = [ps, 0, 0, ps, localTx, localTy]
 		fa := ba * ps
 		fb := bb * ps
 		fc := bc * ps
 		fd := bd * ps
 		ftx := ba*localTx + bc*localTy + btx
 		fty := bb*localTx + bd*localTy + bty
-
-		// 4 local positions: (0,0), (qw,0), (0,qh), (qw,qh)
-		// After full transform: dx = fa*lx + fc*ly + ftx, dy = fb*lx + fd*ly + fty
-		qlx := [4]float64{0, qw, 0, qw}
-		qly := [4]float64{0, 0, qh, qh}
 
 		// Per-particle color
 		ca := p.alpha * cmd.Color.A
@@ -494,20 +485,30 @@ func (s *Scene) submitParticlesBatched(target *ebiten.Image, cmd *RenderCommand)
 
 		base := uint32(len(s.batchVerts))
 
-		for j := 0; j < 4; j++ {
-			dx := float32(fa*qlx[j] + fc*qly[j] + ftx)
-			dy := float32(fb*qlx[j] + fd*qly[j] + fty)
-			s.batchVerts = append(s.batchVerts, ebiten.Vertex{
-				DstX:   dx,
-				DstY:   dy,
-				SrcX:   psx[j],
-				SrcY:   psy[j],
-				ColorR: cr,
-				ColorG: cg,
-				ColorB: cb,
-				ColorA: ca,
-			})
-		}
+		// Inline 4 vertices: corners at (0,0), (qw,0), (0,qh), (qw,qh).
+		// qw/qh are emitter-constant, hoisted outside the particle loop.
+		s.batchVerts = append(s.batchVerts,
+			ebiten.Vertex{
+				DstX: float32(ftx), DstY: float32(fty),
+				SrcX: psx[0], SrcY: psy[0],
+				ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
+			},
+			ebiten.Vertex{
+				DstX: float32(fa*qw + ftx), DstY: float32(fb*qw + fty),
+				SrcX: psx[1], SrcY: psy[1],
+				ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
+			},
+			ebiten.Vertex{
+				DstX: float32(fc*qh + ftx), DstY: float32(fd*qh + fty),
+				SrcX: psx[2], SrcY: psy[2],
+				ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
+			},
+			ebiten.Vertex{
+				DstX: float32(fa*qw + fc*qh + ftx), DstY: float32(fb*qw + fd*qh + fty),
+				SrcX: psx[3], SrcY: psy[3],
+				ColorR: cr, ColorG: cg, ColorB: cb, ColorA: ca,
+			},
+		)
 
 		s.batchInds = append(s.batchInds,
 			base+0, base+1, base+2,
