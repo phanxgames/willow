@@ -245,77 +245,6 @@ Pre-computed transforms, no traversal, no sorting — pure draw call cost.
 
 ---
 
-## Micro-Optimizations Applied
-
-After establishing baselines, three micro-optimizations were evaluated:
-
-### 1. Sincos Skip (kept)
-
-Skip `math.Sincos()` in `computeLocalTransform` when `Rotation == 0` (the common case for static sprites).
-
-```go
-if n.Rotation != 0 {
-    sin, cos = math.Sincos(n.Rotation)
-} else {
-    cos = 1
-}
-```
-
-Benefit is sub-microsecond per node — doesn't show in noisy 10K-sprite benchmarks, but free for the branch predictor in the hot path.
-
-### 2. Default Command Capacity Bump (kept)
-
-`defaultCommandCap` raised from 1024 to 4096, eliminating one early slice reallocation for scenes with >1024 renderable nodes. Zero cost (just a larger initial `make`).
-
-### 3. Index Sort (reverted)
-
-Attempted replacing value-based merge sort (moving 144-byte `RenderCommand` structs) with index-based sort (moving 4-byte `int32` indices). **Result: 4x regression.** The indirection in `cmds[src[i]]` during merge comparisons destroyed cache locality. Sequential access through contiguous value arrays is faster than random access via indices, even when moving more bytes. Reverted.
-
-### 4. Merged Update Tree Walks (kept)
-
-Combined separate `updateNodes` and `updateParticles` walks into a single `updateNodesAndParticles` function in `scene.go`. Eliminates one full tree walk per frame in `Update()`. No measurable regression in benchmarks; saves ~1 tree walk of overhead.
-
-### 5. Hoist UV Constants in Particle Loop (kept)
-
-Moved per-emitter-constant UV coordinates (`psx`, `psy`) and quad dimensions (`qw`, `qh`) outside the per-particle inner loop in `submitParticlesBatched`. Sub-microsecond savings per emitter — free optimization with no downside.
-
-### 6. RenderCommand Struct Shrink: float64 → float32 (kept, prior session)
-
-Changed `RenderCommand.Transform` from `[6]float64` to `[6]float32` and `RenderCommand.Color` from `Color` (float64) to `color32` (float32). Added `affine32()` helper. Struct size: 216 → 168 bytes (22% reduction). CommandSort benchmark improved ~11% from smaller struct due to better cache utilization during merge sort.
-
-### 7. Particle Struct Downsize: float64 → float32 (kept, prior session)
-
-Changed particle `colorR/G/B/A`, `scale`, `alpha`, `startScale/endScale`, `startAlpha/endAlpha` from float64 to float32. Added `lerp32()` helper. Struct size: 168 → 112 bytes (33% reduction). No regression in benchmarks.
-
-### 8. Skip Invisible Subtrees in Update Walks (kept)
-
-Added `if !n.Visible { return }` to `updateWorldTransform` and `updateNodesAndParticles`. Skips entire subtrees of invisible nodes during Update. Zero cost for visible nodes (one branch), saves entire subtree walk for invisible nodes.
-
-### 9. No-Rotation No-Skew Fast Path in computeLocalTransform (kept)
-
-Added early return in `computeLocalTransform` for the common case where `Rotation == 0 && SkewX == 0 && SkewY == 0`. Reduces the computation from Sincos + Tan + 12 multiplies + 6 adds to just 4 multiplies + 2 adds. Zero struct size increase — purely a code-path optimization.
-
-**Result:** Transform_10000Dirty improved ~5% (2.34M → 2.22M ns/op). Clean case unchanged (doesn't call computeLocalTransform). Small but free — no downside.
-
-### 10. Cache localTransform [6]float64 on Node (reverted)
-
-Added `localTransform [6]float64` and `localDirty bool` to Node struct. When only the parent moved (parentRecomputed but not localDirty), reuse cached local matrix — skip Sincos/Tan entirely. Modeled after Pixi.js and Starling's lazy local matrix caching.
-
-**Result: 8-59% regression.** The 48-byte struct size increase per node hurt cache locality more than the saved trig computations helped. Transform_10000Clean regressed 59% (323K → 514K) because fewer nodes fit per cache line during tree walk. Transform_10000Dirty regressed 8%. Do not reattempt without first reducing Node struct size to offset the added fields.
-
-### 11. Decouple View Transform from Traverse (reverted)
-
-Attempted removing transform computation from `traverse()` — instead, `traverse` would read precomputed `worldTransform` (from `updateWorldTransform` in `Update()`) and compose `viewWorld = multiplyAffine(viewTransform, worldTransform)` only at emit time.
-
-**Result: 19-62% regression across all benchmarks.** Root causes:
-1. **Extra tree walk** — `drawWithCamera` needed a safety `updateWorldTransform(false)` call so `Draw()` works standalone (first frame). Even with clean dirty flags, visiting 10K nodes to check flags is not free.
-2. **Extra multiply per renderable node** — old traverse baked camera view into worldTransform during traversal (one multiply, only when dirty). New approach computes worldTransform (in Update) AND viewWorld (in Draw) — two multiplies total per renderable node.
-3. **Net effect** — two tree walks (updateWorldTransform + traverse) instead of one combined walk, plus an unconditional `multiplyAffine` for every renderable node.
-
-The old approach (traverse computes transforms inline) is actually optimal because it does exactly one walk with one multiply per dirty node. Do not reattempt without fundamentally different approach (e.g. flat traversal array that eliminates the walk entirely).
-
----
-
 ## Key Takeaways
 
 1. **Single page (ideal):** Coalesced is ~2x faster than Immediate and eliminates virtually all per-frame allocations (30,000 -> 3).
@@ -327,3 +256,5 @@ The old approach (traverse computes transforms inline) is actually optimal becau
 7. **Willow Coalesced vs Raw DrawImage:** Willow's scene graph adds ~0-20% overhead vs hand-writing DrawImage calls — but because it batches automatically, it's often **faster** than raw DrawImage.
 8. **Willow Coalesced vs Raw DrawTriangles32:** The theoretical floor is ~5-6x faster (pure pre-computed vertex submission). The gap is Willow's traversal + transform computation + sorting + vertex building — the cost of a retained-mode scene graph.
 9. **Particles are nearly optimal:** Willow Coalesced particle rendering is only 1.3x slower than raw DrawTriangles32 — the scene graph overhead is minimal for particle batches.
+
+See `spec/optimization-research.md` for detailed optimization history and future research.
