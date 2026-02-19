@@ -217,7 +217,7 @@ func (s *Scene) Update() {
 
 	// Refresh world transforms first so camera follow targets and hit testing
 	// have accurate positions this frame.
-	updateWorldTransform(s.root, identityTransform, 1.0, true)
+	updateWorldTransform(s.root, identityTransform, 1.0, true, true)
 
 	for _, cam := range s.cameras {
 		cam.update(dt)
@@ -297,7 +297,7 @@ func (s *Scene) drawWithCamera(target *ebiten.Image, cam *Camera) {
 	}
 
 	treeOrder := 0
-	s.traverse(s.root, viewTransform, viewAlpha, true, &treeOrder)
+	s.traverse(s.root, viewTransform, viewAlpha, true, true, &treeOrder)
 
 	if s.debug {
 		stats.traverseTime = time.Since(t0)

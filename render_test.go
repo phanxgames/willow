@@ -10,7 +10,7 @@ import (
 func traverseScene(s *Scene) {
 	s.commands = s.commands[:0]
 	treeOrder := 0
-	s.traverse(s.root, identityTransform, 1.0, false, &treeOrder)
+	s.traverse(s.root, identityTransform, 1.0, false, false, &treeOrder)
 }
 
 // --- Command emission ---
@@ -339,7 +339,7 @@ func BenchmarkTraverse1000(b *testing.B) {
 	for b.Loop() {
 		s.commands = s.commands[:0]
 		treeOrder := 0
-		s.traverse(s.root, identityTransform, 1.0, false, &treeOrder)
+		s.traverse(s.root, identityTransform, 1.0, false, false, &treeOrder)
 	}
 }
 
@@ -352,7 +352,7 @@ func BenchmarkTraverse10000(b *testing.B) {
 	for b.Loop() {
 		s.commands = s.commands[:0]
 		treeOrder := 0
-		s.traverse(s.root, identityTransform, 1.0, false, &treeOrder)
+		s.traverse(s.root, identityTransform, 1.0, false, false, &treeOrder)
 	}
 }
 

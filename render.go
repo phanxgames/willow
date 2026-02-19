@@ -62,18 +62,23 @@ func affine32(m [6]float64) [6]float32 {
 
 // traverse walks the node tree depth-first, updating transforms and emitting
 // render commands for visible, renderable leaf nodes.
-func (s *Scene) traverse(n *Node, parentTransform [6]float64, parentAlpha float64, parentRecomputed bool, treeOrder *int) {
+func (s *Scene) traverse(n *Node, parentTransform [6]float64, parentAlpha float64, parentRecomputed bool, parentAlphaChanged bool, treeOrder *int) {
 	if !n.Visible {
 		return
 	}
 
 	// Update world transform
 	recompute := n.transformDirty || parentRecomputed
+	alphaChanged := n.alphaDirty || parentAlphaChanged
 	if recompute {
 		local := computeLocalTransform(n)
 		n.worldTransform = multiplyAffine(parentTransform, local)
 		n.worldAlpha = parentAlpha * n.Alpha
 		n.transformDirty = false
+		n.alphaDirty = false
+	} else if alphaChanged {
+		n.worldAlpha = parentAlpha * n.Alpha
+		n.alphaDirty = false
 	}
 
 	// Determine if this node is culled. Culling only suppresses this node's
@@ -88,7 +93,7 @@ func (s *Scene) traverse(n *Node, parentTransform [6]float64, parentAlpha float6
 			return
 		}
 		if !n.staticCache.blocked {
-			s.buildStaticCache(n, recompute, treeOrder)
+			s.buildStaticCache(n, recompute, recompute || alphaChanged, treeOrder)
 			return
 		}
 		// blocked: fall through to normal traversal
@@ -187,7 +192,7 @@ func (s *Scene) traverse(n *Node, parentTransform [6]float64, parentAlpha float6
 		children = n.sortedChildren
 	}
 	for _, child := range children {
-		s.traverse(child, n.worldTransform, n.worldAlpha, recompute, treeOrder)
+		s.traverse(child, n.worldTransform, n.worldAlpha, recompute, recompute || alphaChanged, treeOrder)
 	}
 }
 
@@ -465,7 +470,7 @@ func invertAffine32(m [6]float32) [6]float32 {
 // buildStaticCache traverses the container's subtree normally, captures
 // the emitted commands, and normalizes them relative to the container's
 // current world transform and alpha.
-func (s *Scene) buildStaticCache(n *Node, parentRecomputed bool, treeOrder *int) {
+func (s *Scene) buildStaticCache(n *Node, parentRecomputed bool, parentAlphaChanged bool, treeOrder *int) {
 	startIdx := len(s.commands)
 
 	// Emit the container's own command if renderable.
@@ -485,7 +490,7 @@ func (s *Scene) buildStaticCache(n *Node, parentRecomputed bool, treeOrder *int)
 			children = n.sortedChildren
 		}
 		for _, child := range children {
-			s.traverse(child, n.worldTransform, n.worldAlpha, recompute, treeOrder)
+			s.traverse(child, n.worldTransform, n.worldAlpha, recompute, recompute || parentAlphaChanged, treeOrder)
 		}
 	}
 

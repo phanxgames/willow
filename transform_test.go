@@ -139,7 +139,7 @@ func TestWorldTransformParentChild(t *testing.T) {
 	parent.X = 100
 	child.X = 10
 
-	updateWorldTransform(parent, identityTransform, 1.0, false)
+	updateWorldTransform(parent, identityTransform, 1.0, false, false)
 
 	// parent world: [1,0,0,1,100,0]
 	assertNear(t, "parent.tx", parent.worldTransform[4], 100)
@@ -155,7 +155,7 @@ func TestAlphaPropagation(t *testing.T) {
 	parent.Alpha = 0.5
 	child.Alpha = 0.5
 
-	updateWorldTransform(parent, identityTransform, 1.0, false)
+	updateWorldTransform(parent, identityTransform, 1.0, false, false)
 
 	assertNear(t, "parent.worldAlpha", parent.worldAlpha, 0.5)
 	assertNear(t, "child.worldAlpha", child.worldAlpha, 0.25)
@@ -168,14 +168,14 @@ func TestDirtyFlagSkipsClean(t *testing.T) {
 
 	parent.X = 100
 	child.X = 10
-	updateWorldTransform(parent, identityTransform, 1.0, false)
+	updateWorldTransform(parent, identityTransform, 1.0, false, false)
 
 	// Clear dirty, change child X directly (without setter → stays clean)
 	child.transformDirty = false
 	parent.transformDirty = false
 	child.X = 999 // dirty flag NOT set
 
-	updateWorldTransform(parent, identityTransform, 1.0, false)
+	updateWorldTransform(parent, identityTransform, 1.0, false, false)
 
 	// Child should NOT have been recomputed since it's not dirty
 	assertNear(t, "child.tx (stale)", child.worldTransform[4], 110)
@@ -188,10 +188,10 @@ func TestDirtyFlagRecomputes(t *testing.T) {
 
 	parent.X = 100
 	child.X = 10
-	updateWorldTransform(parent, identityTransform, 1.0, false)
+	updateWorldTransform(parent, identityTransform, 1.0, false, false)
 
 	child.SetPosition(20, 0) // marks dirty
-	updateWorldTransform(parent, identityTransform, 1.0, false)
+	updateWorldTransform(parent, identityTransform, 1.0, false, false)
 
 	assertNear(t, "child.tx (updated)", child.worldTransform[4], 120)
 }
@@ -203,11 +203,11 @@ func TestParentRecomputedPropagates(t *testing.T) {
 
 	parent.X = 100
 	child.X = 10
-	updateWorldTransform(parent, identityTransform, 1.0, false)
+	updateWorldTransform(parent, identityTransform, 1.0, false, false)
 
 	// Move parent — child is not directly dirty but must update
 	parent.SetPosition(200, 0)
-	updateWorldTransform(parent, identityTransform, 1.0, false)
+	updateWorldTransform(parent, identityTransform, 1.0, false, false)
 
 	assertNear(t, "child.tx (from parent)", child.worldTransform[4], 210)
 }
@@ -227,7 +227,7 @@ func TestWorldToLocalRoundtrip(t *testing.T) {
 	child.ScaleY = 3
 	child.Rotation = math.Pi / 6
 
-	updateWorldTransform(parent, identityTransform, 1.0, false)
+	updateWorldTransform(parent, identityTransform, 1.0, false, false)
 
 	// Roundtrip test
 	wx, wy := 150.0, 80.0
@@ -241,7 +241,7 @@ func TestLocalToWorldIdentity(t *testing.T) {
 	n := NewContainer("test")
 	n.X = 50
 	n.Y = 100
-	updateWorldTransform(n, identityTransform, 1.0, true)
+	updateWorldTransform(n, identityTransform, 1.0, true, true)
 
 	wx, wy := n.LocalToWorld(0, 0)
 	assertNear(t, "origin.x", wx, 50)
@@ -260,7 +260,7 @@ func TestDeepHierarchy(t *testing.T) {
 		}
 	}
 
-	updateWorldTransform(nodes[0], identityTransform, 1.0, false)
+	updateWorldTransform(nodes[0], identityTransform, 1.0, false, false)
 
 	// Each level adds 10 to tx, so deepest (index 9) should have tx=100
 	assertNear(t, "deep.tx", nodes[9].worldTransform[4], 100)
@@ -303,10 +303,10 @@ func TestSettersDirty(t *testing.T) {
 	n.transformDirty = false
 
 	n.SetAlpha(0.5)
-	if !n.transformDirty {
-		t.Error("SetAlpha should set dirty")
+	if !n.alphaDirty {
+		t.Error("SetAlpha should set alphaDirty")
 	}
-	n.transformDirty = false
+	n.alphaDirty = false
 
 	n.MarkDirty()
 	if !n.transformDirty {
@@ -334,7 +334,7 @@ func TestWorldToLocalZeroScale(t *testing.T) {
 	n := NewContainer("test")
 	n.ScaleX = 0
 	n.ScaleY = 0
-	updateWorldTransform(n, identityTransform, 1.0, true)
+	updateWorldTransform(n, identityTransform, 1.0, true, true)
 
 	// Should not panic; returns identity-transformed point.
 	lx, ly := n.WorldToLocal(100, 200)
@@ -384,14 +384,14 @@ func BenchmarkUpdateWorldTransform10k(b *testing.B) {
 	}
 
 	// Warm up
-	updateWorldTransform(root, identityTransform, 1.0, true)
+	updateWorldTransform(root, identityTransform, 1.0, true, true)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		// Mark root dirty to force full recomputation
 		root.transformDirty = true
-		updateWorldTransform(root, identityTransform, 1.0, false)
+		updateWorldTransform(root, identityTransform, 1.0, false, false)
 	}
 }
 
@@ -407,12 +407,12 @@ func BenchmarkUpdateWorldTransformStatic(b *testing.B) {
 	}
 
 	// Initial computation (clears dirty flags)
-	updateWorldTransform(root, identityTransform, 1.0, true)
+	updateWorldTransform(root, identityTransform, 1.0, true, true)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
 		// All clean — should be near-zero cost
-		updateWorldTransform(root, identityTransform, 1.0, false)
+		updateWorldTransform(root, identityTransform, 1.0, false, false)
 	}
 }

@@ -171,7 +171,7 @@ func TestHitTest_TopmostNode(t *testing.T) {
 	s.Root().AddChild(b)
 
 	// Refresh transforms.
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	hit := s.hitTest(50, 50)
 	if hit != b {
@@ -189,7 +189,7 @@ func TestHitTest_SkipsInvisible(t *testing.T) {
 
 	s.Root().AddChild(a)
 	s.Root().AddChild(b)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	hit := s.hitTest(50, 50)
 	if hit != a {
@@ -206,7 +206,7 @@ func TestHitTest_SkipsNonInteractable(t *testing.T) {
 
 	s.Root().AddChild(a)
 	s.Root().AddChild(b)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	hit := s.hitTest(50, 50)
 	if hit != a {
@@ -226,7 +226,7 @@ func TestHitTest_RespectsZIndex(t *testing.T) {
 
 	s.Root().AddChild(a)
 	s.Root().AddChild(b)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	hit := s.hitTest(50, 50)
 	if hit != a {
@@ -240,7 +240,7 @@ func TestHitTest_Miss(t *testing.T) {
 	a.Interactable = true
 
 	s.Root().AddChild(a)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	hit := s.hitTest(200, 200)
 	if hit != nil {
@@ -256,7 +256,7 @@ func TestHitTest_TransformedNode(t *testing.T) {
 	a.Y = 200
 
 	s.Root().AddChild(a)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	// Point at origin should miss.
 	if s.hitTest(50, 50) != nil {
@@ -279,7 +279,7 @@ func TestHitTest_RotatedNode(t *testing.T) {
 	a.Rotation = math.Pi / 4 // 45 degrees
 
 	s.Root().AddChild(a)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	// Center should still hit.
 	if s.hitTest(50, 50) != a {
@@ -294,7 +294,7 @@ func TestSceneLevelCallback_PointerDown(t *testing.T) {
 	sprite := NewSprite("s", TextureRegion{OriginalW: 100, OriginalH: 100})
 	sprite.Interactable = true
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	var called bool
 	s.OnPointerDown(func(ctx PointerContext) {
@@ -315,7 +315,7 @@ func TestPerNodeCallback_PointerDown(t *testing.T) {
 	sprite := NewSprite("s", TextureRegion{OriginalW: 100, OriginalH: 100})
 	sprite.Interactable = true
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	var nodeCalled bool
 	sprite.OnPointerDown = func(ctx PointerContext) {
@@ -333,7 +333,7 @@ func TestCallbackOrder_SceneThenNode(t *testing.T) {
 	sprite := NewSprite("s", TextureRegion{OriginalW: 100, OriginalH: 100})
 	sprite.Interactable = true
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	var order []string
 	s.OnPointerDown(func(ctx PointerContext) {
@@ -382,7 +382,7 @@ func TestPointerCapture(t *testing.T) {
 
 	s.Root().AddChild(a)
 	s.Root().AddChild(b)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	// Capture pointer to b.
 	s.CapturePointer(0, b)
@@ -420,7 +420,7 @@ func TestDragDetection(t *testing.T) {
 	sprite := NewSprite("s", TextureRegion{OriginalW: 100, OriginalH: 100})
 	sprite.Interactable = true
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	var events []string
 	s.OnDragStart(func(ctx DragContext) { events = append(events, "dragstart") })
@@ -462,7 +462,7 @@ func TestClickDetection(t *testing.T) {
 	sprite := NewSprite("s", TextureRegion{OriginalW: 100, OriginalH: 100})
 	sprite.Interactable = true
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	var clicked bool
 	s.OnClick(func(ctx ClickContext) {
@@ -485,7 +485,7 @@ func TestClickNotFiredOnDrag(t *testing.T) {
 	sprite := NewSprite("s", TextureRegion{OriginalW: 100, OriginalH: 100})
 	sprite.Interactable = true
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	var clicked bool
 	s.OnClick(func(ctx ClickContext) { clicked = true })
@@ -509,7 +509,7 @@ func TestClickNotFiredOnDifferentNode(t *testing.T) {
 
 	s.Root().AddChild(a)
 	s.Root().AddChild(b)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	var clicked bool
 	s.OnClick(func(ctx ClickContext) { clicked = true })
@@ -531,7 +531,7 @@ func TestContextCoordinates(t *testing.T) {
 	sprite.X = 50
 	sprite.Y = 50
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	s.OnPointerDown(func(ctx PointerContext) {
 		if ctx.GlobalX != 75 || ctx.GlobalY != 75 {
@@ -553,7 +553,7 @@ func TestSetDragDeadZone(t *testing.T) {
 	sprite := NewSprite("s", TextureRegion{OriginalW: 100, OriginalH: 100})
 	sprite.Interactable = true
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	s.SetDragDeadZone(20)
 
@@ -589,8 +589,8 @@ func TestIndependentScenes(t *testing.T) {
 	sprite2.Interactable = true
 	s2.Root().AddChild(sprite2)
 
-	updateWorldTransform(s1.root, identityTransform, 1.0, false)
-	updateWorldTransform(s2.root, identityTransform, 1.0, false)
+	updateWorldTransform(s1.root, identityTransform, 1.0, false, false)
+	updateWorldTransform(s2.root, identityTransform, 1.0, false, false)
 
 	var count1, count2 int
 	s1.OnPointerDown(func(ctx PointerContext) { count1++ })
@@ -626,7 +626,7 @@ func TestECSBridge(t *testing.T) {
 	sprite.Interactable = true
 	sprite.EntityID = 42
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	s.firePointerDown(sprite, 0, 50, 50, MouseButtonLeft, 0)
 
@@ -648,7 +648,7 @@ func TestECSBridge_NoEntity(t *testing.T) {
 	sprite.Interactable = true
 	// EntityID is 0 — should not emit.
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	s.firePointerDown(sprite, 0, 50, 50, MouseButtonLeft, 0)
 	if len(store.events) != 0 {
@@ -665,7 +665,7 @@ func TestECSBridge_DragFields(t *testing.T) {
 	sprite.Interactable = true
 	sprite.EntityID = 7
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	ctx := DragContext{
 		StartX: 10, StartY: 20,
@@ -703,7 +703,7 @@ func TestECSBridge_PinchFields(t *testing.T) {
 	sprite.Interactable = true
 	sprite.EntityID = 99
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	// Set up pinch state so firePinch finds a hit node.
 	s.pinch.active = true
@@ -746,7 +746,7 @@ func TestECSBridge_PinchWithoutEntityID(t *testing.T) {
 	sprite.Interactable = true
 	// EntityID is 0 — pinch events should still emit.
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	s.pinch.active = true
 	s.pinch.pointer0 = 1
@@ -792,7 +792,7 @@ func TestECSBridge_NoStore(t *testing.T) {
 	sprite.Interactable = true
 	sprite.EntityID = 1
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	s.firePointerDown(sprite, 0, 50, 50, MouseButtonLeft, 0)
 	s.fireClick(sprite, 0, 50, 50, MouseButtonLeft, 0)
@@ -810,7 +810,7 @@ func TestPerNodeOnPinch(t *testing.T) {
 	sprite := NewSprite("s", TextureRegion{OriginalW: 100, OriginalH: 100})
 	sprite.Interactable = true
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	var called bool
 	sprite.OnPinch = func(ctx PinchContext) {
@@ -835,7 +835,7 @@ func TestHoverMove(t *testing.T) {
 	sprite := NewSprite("s", TextureRegion{OriginalW: 100, OriginalH: 100})
 	sprite.Interactable = true
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	var moveCalled bool
 	s.OnPointerMove(func(ctx PointerContext) {
@@ -865,7 +865,7 @@ func TestCollectInteractable_SkipsInvisibleSubtree(t *testing.T) {
 	container.AddChild(child)
 
 	s.Root().AddChild(container)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	buf := s.collectInteractable(s.root, nil)
 	for _, n := range buf {
@@ -885,7 +885,7 @@ func TestCollectInteractable_SkipsNonInteractableSubtree(t *testing.T) {
 	container.AddChild(child)
 
 	s.Root().AddChild(container)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	buf := s.collectInteractable(s.root, nil)
 	for _, n := range buf {
@@ -902,7 +902,7 @@ func TestAutoReleaseCapture(t *testing.T) {
 	sprite := NewSprite("s", TextureRegion{OriginalW: 100, OriginalH: 100})
 	sprite.Interactable = true
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	s.CapturePointer(0, sprite)
 	if s.captured[0] != sprite {
@@ -944,7 +944,7 @@ func BenchmarkHitTest_1000Nodes(b *testing.B) {
 		n.Y = float64(i/100) * 12
 		s.Root().AddChild(n)
 	}
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	b.ResetTimer()
 	b.ReportAllocs()

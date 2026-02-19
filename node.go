@@ -126,6 +126,7 @@ type Node struct {
 	worldTransform [6]float64
 	worldAlpha     float64
 	transformDirty bool
+	alphaDirty     bool
 
 	// Visibility & interaction
 
@@ -264,6 +265,7 @@ func nodeDefaults(n *Node) {
 	n.Visible = true
 	n.Renderable = true
 	n.transformDirty = true
+	n.alphaDirty = true
 	n.childrenSorted = true
 }
 
@@ -340,11 +342,61 @@ func NewText(name string, content string, font Font) *Node {
 // Used by RenderTexture to attach a persistent offscreen canvas to a sprite node.
 func (n *Node) SetCustomImage(img *ebiten.Image) {
 	n.customImage = img
+	invalidateAncestorCache(n)
 }
 
 // CustomImage returns the user-provided image, or nil if not set.
 func (n *Node) CustomImage() *ebiten.Image {
 	return n.customImage
+}
+
+// --- Visual property setters ---
+// These setters update the field and invalidate ancestor static caches.
+// The underlying fields remain public for reads.
+
+// SetColor sets the node's tint color and invalidates ancestor static caches.
+func (n *Node) SetColor(c Color) {
+	n.Color = c
+	invalidateAncestorCache(n)
+}
+
+// SetBlendMode sets the node's blend mode and invalidates ancestor static caches.
+func (n *Node) SetBlendMode(b BlendMode) {
+	n.BlendMode = b
+	invalidateAncestorCache(n)
+}
+
+// SetVisible sets the node's visibility and invalidates ancestor static caches.
+func (n *Node) SetVisible(v bool) {
+	n.Visible = v
+	if n.staticCache != nil {
+		n.staticCache.valid = false
+	}
+	invalidateAncestorCache(n)
+}
+
+// SetRenderable sets whether the node emits render commands and invalidates ancestor static caches.
+func (n *Node) SetRenderable(r bool) {
+	n.Renderable = r
+	invalidateAncestorCache(n)
+}
+
+// SetTextureRegion sets the node's texture region and invalidates ancestor static caches.
+func (n *Node) SetTextureRegion(r TextureRegion) {
+	n.TextureRegion = r
+	invalidateAncestorCache(n)
+}
+
+// SetRenderLayer sets the node's render layer and invalidates ancestor static caches.
+func (n *Node) SetRenderLayer(l uint8) {
+	n.RenderLayer = l
+	invalidateAncestorCache(n)
+}
+
+// SetGlobalOrder sets the node's global order and invalidates ancestor static caches.
+func (n *Node) SetGlobalOrder(o int) {
+	n.GlobalOrder = o
+	invalidateAncestorCache(n)
 }
 
 // --- Tree manipulation ---
@@ -667,6 +719,7 @@ func (n *Node) removeChildByPtr(child *Node) {
 func markSubtreeDirty(node *Node) {
 	invalidateAncestorCache(node)
 	node.transformDirty = true
+	node.alphaDirty = true
 	for _, child := range node.children {
 		markSubtreeDirtyNoInvalidate(child)
 	}
@@ -676,6 +729,7 @@ func markSubtreeDirty(node *Node) {
 // invalidation only needs to happen once from the subtree root.
 func markSubtreeDirtyNoInvalidate(node *Node) {
 	node.transformDirty = true
+	node.alphaDirty = true
 	for _, child := range node.children {
 		markSubtreeDirtyNoInvalidate(child)
 	}

@@ -234,7 +234,7 @@ func TestInjectClick(t *testing.T) {
 	sprite := NewSprite("s", TextureRegion{OriginalW: 100, OriginalH: 100})
 	sprite.Interactable = true
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	var clicked bool
 	s.OnClick(func(ctx ClickContext) {
@@ -273,7 +273,7 @@ func TestInjectDrag(t *testing.T) {
 	sprite := NewSprite("s", TextureRegion{OriginalW: 400, OriginalH: 400})
 	sprite.Interactable = true
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	var events []string
 	s.OnDragStart(func(ctx DragContext) { events = append(events, "dragstart") })
@@ -344,7 +344,7 @@ func TestProcessInjectedInput(t *testing.T) {
 	sprite := NewSprite("s", TextureRegion{OriginalW: 100, OriginalH: 100})
 	sprite.Interactable = true
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	var downFired bool
 	s.OnPointerDown(func(ctx PointerContext) {
@@ -389,7 +389,7 @@ func TestInjectWithCamera(t *testing.T) {
 	sprite.X = 295
 	sprite.Y = 215
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	var hitNode *Node
 	s.OnPointerDown(func(ctx PointerContext) {
@@ -454,7 +454,7 @@ func TestRunnerStep_Click(t *testing.T) {
 	sprite := NewSprite("s", TextureRegion{OriginalW: 200, OriginalH: 200})
 	sprite.Interactable = true
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	data := []byte(`{"steps": [{"action": "click", "x": 50, "y": 50}]}`)
 	runner, err := LoadTestScript(data)
@@ -531,7 +531,7 @@ func TestRunnerStep_Drag(t *testing.T) {
 	sprite := NewSprite("s", TextureRegion{OriginalW: 400, OriginalH: 400})
 	sprite.Interactable = true
 	s.Root().AddChild(sprite)
-	updateWorldTransform(s.root, identityTransform, 1.0, false)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
 
 	data := []byte(`{"steps": [{"action": "drag", "fromX": 10, "fromY": 10, "toX": 200, "toY": 200, "frames": 4}]}`)
 	runner, err := LoadTestScript(data)

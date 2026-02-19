@@ -82,6 +82,23 @@ func BenchmarkDraw_10000Sprites_AlphaVarying(b *testing.B) {
 	}
 }
 
+func BenchmarkDraw_10000Sprites_AlphaOnly(b *testing.B) {
+	s := setupBenchScene(10000)
+	screen := ebiten.NewImage(1280, 720)
+	children := s.Root().Children()
+
+	s.Draw(screen) // warmup
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for j, child := range children {
+			child.SetAlpha(0.5 + 0.5*math.Sin(float64(i+j)*0.001))
+		}
+		s.Draw(screen)
+	}
+}
+
 // --- Sprite Rendering Benchmarks (Coalesced) ---
 
 func BenchmarkDraw_10000Sprites_Static_Coalesced(b *testing.B) {
@@ -130,6 +147,24 @@ func BenchmarkDraw_10000Sprites_AlphaVarying_Coalesced(b *testing.B) {
 		for j, child := range children {
 			child.Alpha = 0.5 + 0.5*math.Sin(float64(i+j)*0.001)
 			child.transformDirty = true
+		}
+		s.Draw(screen)
+	}
+}
+
+func BenchmarkDraw_10000Sprites_AlphaOnly_Coalesced(b *testing.B) {
+	s := setupBenchScene(10000)
+	s.SetBatchMode(BatchModeCoalesced)
+	screen := ebiten.NewImage(1280, 720)
+	children := s.Root().Children()
+
+	s.Draw(screen) // warmup
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for j, child := range children {
+			child.SetAlpha(0.5 + 0.5*math.Sin(float64(i+j)*0.001))
 		}
 		s.Draw(screen)
 	}
@@ -277,19 +312,37 @@ func BenchmarkTransform_10000Dirty(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		// Mark all transforms dirty.
 		markSubtreeDirty(s.Root())
-		updateWorldTransform(s.Root(), identityTransform, 1.0, false)
+		updateWorldTransform(s.Root(), identityTransform, 1.0, false, false)
 	}
 }
 
 func BenchmarkTransform_10000Clean(b *testing.B) {
 	s := setupBenchScene(10000)
 	// Pre-compute so nothing is dirty.
-	updateWorldTransform(s.Root(), identityTransform, 1.0, true)
+	updateWorldTransform(s.Root(), identityTransform, 1.0, true, true)
 
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		updateWorldTransform(s.Root(), identityTransform, 1.0, false)
+		updateWorldTransform(s.Root(), identityTransform, 1.0, false, false)
+	}
+}
+
+func BenchmarkTransform_10000AlphaOnly(b *testing.B) {
+	s := setupBenchScene(10000)
+	// Pre-compute all transforms so they're clean.
+	updateWorldTransform(s.Root(), identityTransform, 1.0, true, true)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		// Mark only alpha dirty on every node.
+		children := s.Root().Children()
+		for _, child := range children {
+			child.alphaDirty = true
+		}
+		s.Root().alphaDirty = true
+		updateWorldTransform(s.Root(), identityTransform, 1.0, false, false)
 	}
 }
 
@@ -362,7 +415,7 @@ func BenchmarkHitTest_1000Interactable(b *testing.B) {
 		n.Y = float64(i/100) * 12
 		s.Root().AddChild(n)
 	}
-	updateWorldTransform(s.root, identityTransform, 1.0, true)
+	updateWorldTransform(s.root, identityTransform, 1.0, true, true)
 
 	b.ResetTimer()
 	b.ReportAllocs()

@@ -104,22 +104,27 @@ func transformPoint(m [6]float64, x, y float64) (float64, float64) {
 }
 
 // updateWorldTransform recomputes a node's worldTransform and worldAlpha.
-// parentRecomputed indicates whether the parent was recomputed this frame,
-// which forces recomputation of this node even if it's not dirty.
-func updateWorldTransform(n *Node, parentTransform [6]float64, parentAlpha float64, parentRecomputed bool) {
+// parentRecomputed indicates whether the parent's transform was recomputed this frame.
+// parentAlphaChanged indicates whether the parent's alpha changed (without a full transform recompute).
+func updateWorldTransform(n *Node, parentTransform [6]float64, parentAlpha float64, parentRecomputed bool, parentAlphaChanged bool) {
 	if !n.Visible {
 		return
 	}
 	recompute := n.transformDirty || parentRecomputed
+	alphaChanged := n.alphaDirty || parentAlphaChanged
 	if recompute {
 		local := computeLocalTransform(n)
 		n.worldTransform = multiplyAffine(parentTransform, local)
 		n.worldAlpha = parentAlpha * n.Alpha
 		n.transformDirty = false
+		n.alphaDirty = false
+	} else if alphaChanged {
+		n.worldAlpha = parentAlpha * n.Alpha
+		n.alphaDirty = false
 	}
 
 	for _, child := range n.children {
-		updateWorldTransform(child, n.worldTransform, n.worldAlpha, recompute)
+		updateWorldTransform(child, n.worldTransform, n.worldAlpha, recompute, recompute || alphaChanged)
 	}
 }
 
@@ -164,17 +169,20 @@ func (n *Node) SetPivot(px, py float64) {
 	invalidateAncestorCache(n)
 }
 
-// SetAlpha sets the node's alpha and marks it dirty.
+// SetAlpha sets the node's alpha and marks it alpha-dirty.
+// Unlike other transform setters, this only triggers a worldAlpha recomputation
+// (a single multiply), skipping the full matrix recompute.
 func (n *Node) SetAlpha(a float64) {
 	n.Alpha = a
-	n.transformDirty = true
+	n.alphaDirty = true
 	invalidateAncestorCache(n)
 }
 
-// MarkDirty marks the node's transform as dirty, forcing recomputation
+// MarkDirty marks the node's transform and alpha as dirty, forcing recomputation
 // on the next frame. Useful after bulk-setting fields directly.
 func (n *Node) MarkDirty() {
 	n.transformDirty = true
+	n.alphaDirty = true
 	invalidateAncestorCache(n)
 }
 
