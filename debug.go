@@ -110,6 +110,58 @@ func countDrawCalls(commands []RenderCommand) int {
 	return count
 }
 
+// countDrawCallsCoalesced estimates actual draw calls in coalesced mode.
+// Each batch-key run of atlas sprites is 1 DrawTriangles32 call. Each particle
+// emitter is 1 call. Direct-image sprites and meshes are 1 call each.
+func countDrawCallsCoalesced(commands []RenderCommand) int {
+	if len(commands) == 0 {
+		return 0
+	}
+	count := 0
+	inSpriteRun := false
+	var prevKey batchKey
+	for i := range commands {
+		cmd := &commands[i]
+		switch cmd.Type {
+		case CommandSprite:
+			if cmd.directImage != nil {
+				if inSpriteRun {
+					count++ // flush previous run
+					inSpriteRun = false
+				}
+				count++ // this direct-image sprite
+			} else {
+				key := commandBatchKey(cmd)
+				if !inSpriteRun || key != prevKey {
+					if inSpriteRun {
+						count++ // flush previous run
+					}
+					inSpriteRun = true
+					prevKey = key
+				}
+			}
+		case CommandParticle:
+			if inSpriteRun {
+				count++
+				inSpriteRun = false
+			}
+			if cmd.emitter != nil && cmd.emitter.alive > 0 {
+				count++ // 1 DrawTriangles32 per emitter
+			}
+		case CommandMesh:
+			if inSpriteRun {
+				count++
+				inSpriteRun = false
+			}
+			count++
+		}
+	}
+	if inSpriteRun {
+		count++
+	}
+	return count
+}
+
 // ---- Screenshot ------------------------------------------------------------
 
 // Screenshot queues a labeled screenshot to be captured at the end of the

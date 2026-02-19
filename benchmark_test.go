@@ -81,6 +81,117 @@ func BenchmarkDraw_10000Sprites_AlphaVarying(b *testing.B) {
 	}
 }
 
+// --- Sprite Rendering Benchmarks (Coalesced) ---
+
+func BenchmarkDraw_10000Sprites_Static_Coalesced(b *testing.B) {
+	s := setupBenchScene(10000)
+	s.SetBatchMode(BatchModeCoalesced)
+	screen := ebiten.NewImage(1280, 720)
+	s.Draw(screen) // warmup
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		s.Draw(screen)
+	}
+}
+
+func BenchmarkDraw_10000Sprites_Rotating_Coalesced(b *testing.B) {
+	s := setupBenchScene(10000)
+	s.SetBatchMode(BatchModeCoalesced)
+	screen := ebiten.NewImage(1280, 720)
+	children := s.Root().Children()
+
+	s.Draw(screen) // warmup
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for _, child := range children {
+			child.Rotation += 0.01
+			child.transformDirty = true
+		}
+		s.Draw(screen)
+	}
+}
+
+func BenchmarkDraw_10000Sprites_AlphaVarying_Coalesced(b *testing.B) {
+	s := setupBenchScene(10000)
+	s.SetBatchMode(BatchModeCoalesced)
+	screen := ebiten.NewImage(1280, 720)
+	children := s.Root().Children()
+
+	s.Draw(screen) // warmup
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for j, child := range children {
+			child.Alpha = 0.5 + 0.5*math.Sin(float64(i+j)*0.001)
+			child.transformDirty = true
+		}
+		s.Draw(screen)
+	}
+}
+
+// --- Particle Draw Benchmarks (Immediate vs Coalesced) ---
+
+func setupParticleDrawScene(mode BatchMode) *Scene {
+	s := NewScene()
+	s.SetBatchMode(mode)
+	cfg := EmitterConfig{
+		MaxParticles: 1000,
+		EmitRate:     100000,
+		Lifetime:     Range{Min: 10, Max: 10},
+		Speed:        Range{Min: 10, Max: 50},
+		Angle:        Range{Min: 0, Max: 2 * math.Pi},
+		StartScale:   Range{Min: 1, Max: 1},
+		EndScale:     Range{Min: 0.1, Max: 0.1},
+		StartAlpha:   Range{Min: 1, Max: 1},
+		EndAlpha:     Range{Min: 0, Max: 0},
+		StartColor:   Color{1, 1, 1, 1},
+		EndColor:     Color{1, 0, 0, 1},
+		Region: TextureRegion{
+			Page:      magentaPlaceholderPage,
+			Width:     8,
+			Height:    8,
+			OriginalW: 8,
+			OriginalH: 8,
+		},
+	}
+	emitterNode := NewParticleEmitter("particles", cfg)
+	emitterNode.Emitter.Start()
+	for emitterNode.Emitter.alive < cfg.MaxParticles {
+		emitterNode.Emitter.update(1.0 / 60.0)
+	}
+	s.Root().AddChild(emitterNode)
+	return s
+}
+
+func BenchmarkParticle_Draw_Immediate(b *testing.B) {
+	s := setupParticleDrawScene(BatchModeImmediate)
+	screen := ebiten.NewImage(640, 480)
+	s.Draw(screen) // warmup
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		s.Draw(screen)
+	}
+}
+
+func BenchmarkParticle_Draw_Coalesced(b *testing.B) {
+	s := setupParticleDrawScene(BatchModeCoalesced)
+	screen := ebiten.NewImage(640, 480)
+	s.Draw(screen) // warmup
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		s.Draw(screen)
+	}
+}
+
 // --- Transform Benchmarks ---
 
 func BenchmarkTransform_10000Dirty(b *testing.B) {
@@ -315,5 +426,289 @@ func BenchmarkLighting_MultipleLights(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		ll.Redraw()
+	}
+}
+
+// --- Realistic Multi-Page / Mixed Benchmarks ---
+
+// setupMultiPageScene creates a scene with n sprites spread across 4 synthetic
+// atlas pages. Sprites cycle through pages so the sorted command list produces
+// batch runs of varying length.
+func setupMultiPageScene(n int) *Scene {
+	s := NewScene()
+	pages := [4]*ebiten.Image{
+		ebiten.NewImage(128, 128),
+		ebiten.NewImage(128, 128),
+		ebiten.NewImage(128, 128),
+		ebiten.NewImage(128, 128),
+	}
+	for i, p := range pages {
+		s.RegisterPage(i, p)
+	}
+	root := s.Root()
+	for i := 0; i < n; i++ {
+		region := TextureRegion{
+			Page:      uint16(i % 4),
+			X:         0,
+			Y:         0,
+			Width:     32,
+			Height:    32,
+			OriginalW: 32,
+			OriginalH: 32,
+		}
+		sp := NewSprite("sp", region)
+		sp.X = float64(i%100) * 40
+		sp.Y = float64(i/100) * 40
+		root.AddChild(sp)
+	}
+	return s
+}
+
+// setupMixedScene creates a scene mixing sprites across 2 atlas pages,
+// particle emitters (pre-filled), and varied blend modes.
+// Emitters are interleaved with sprites in the tree so the sorted command
+// list has sprite→particle→sprite transitions that force batch flushes.
+func setupMixedScene(nSprites, nEmitters int) *Scene {
+	s := NewScene()
+	pages := [2]*ebiten.Image{
+		ebiten.NewImage(128, 128),
+		ebiten.NewImage(128, 128),
+	}
+	for i, p := range pages {
+		s.RegisterPage(i, p)
+	}
+	root := s.Root()
+
+	spritesPerGroup := nSprites / (nEmitters + 1)
+	spriteIdx := 0
+
+	addSprites := func(count int) {
+		for j := 0; j < count && spriteIdx < nSprites; j++ {
+			region := TextureRegion{
+				Page:      uint16(spriteIdx % 2),
+				X:         0,
+				Y:         0,
+				Width:     32,
+				Height:    32,
+				OriginalW: 32,
+				OriginalH: 32,
+			}
+			sp := NewSprite("sp", region)
+			sp.X = float64(spriteIdx%100) * 40
+			sp.Y = float64(spriteIdx/100) * 40
+			// Every 10th sprite uses additive blending.
+			if spriteIdx%10 == 0 {
+				sp.BlendMode = BlendAdd
+			}
+			root.AddChild(sp)
+			spriteIdx++
+		}
+	}
+
+	for e := 0; e < nEmitters; e++ {
+		addSprites(spritesPerGroup)
+		cfg := EmitterConfig{
+			MaxParticles: 200,
+			EmitRate:     100000,
+			Lifetime:     Range{Min: 10, Max: 10},
+			Speed:        Range{Min: 10, Max: 50},
+			Angle:        Range{Min: 0, Max: 2 * math.Pi},
+			StartScale:   Range{Min: 1, Max: 1},
+			EndScale:     Range{Min: 0.1, Max: 0.1},
+			StartAlpha:   Range{Min: 1, Max: 1},
+			EndAlpha:     Range{Min: 0, Max: 0},
+			StartColor:   Color{1, 1, 1, 1},
+			EndColor:     Color{1, 0, 0, 1},
+			Region: TextureRegion{
+				Page:      uint16(e % 2),
+				Width:     8,
+				Height:    8,
+				OriginalW: 8,
+				OriginalH: 8,
+			},
+		}
+		emitterNode := NewParticleEmitter("particles", cfg)
+		emitterNode.Emitter.Start()
+		for emitterNode.Emitter.alive < cfg.MaxParticles {
+			emitterNode.Emitter.update(1.0 / 60.0)
+		}
+		root.AddChild(emitterNode)
+	}
+	// Remaining sprites after last emitter.
+	addSprites(nSprites - spriteIdx)
+
+	return s
+}
+
+// setupWorstCaseScene creates n sprites that alternate between page 0 and
+// page 1 on every sprite, producing batch runs of length 1 — the worst case
+// for coalesced mode overhead.
+func setupWorstCaseScene(n int) *Scene {
+	s := NewScene()
+	pages := [2]*ebiten.Image{
+		ebiten.NewImage(128, 128),
+		ebiten.NewImage(128, 128),
+	}
+	for i, p := range pages {
+		s.RegisterPage(i, p)
+	}
+	root := s.Root()
+	for i := 0; i < n; i++ {
+		region := TextureRegion{
+			Page:      uint16(i % 2),
+			X:         0,
+			Y:         0,
+			Width:     32,
+			Height:    32,
+			OriginalW: 32,
+			OriginalH: 32,
+		}
+		sp := NewSprite("sp", region)
+		// Place all sprites at the same depth so page-alternation is preserved
+		// through the sort (stable sort keeps insertion order for equal keys).
+		sp.X = float64(i%100) * 40
+		sp.Y = float64(i/100) * 40
+		root.AddChild(sp)
+	}
+	return s
+}
+
+func BenchmarkDraw_MultiPage_Immediate(b *testing.B) {
+	s := setupMultiPageScene(10000)
+	screen := ebiten.NewImage(1280, 720)
+	s.Draw(screen) // warmup
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		s.Draw(screen)
+	}
+}
+
+func BenchmarkDraw_MultiPage_Coalesced(b *testing.B) {
+	s := setupMultiPageScene(10000)
+	s.SetBatchMode(BatchModeCoalesced)
+	screen := ebiten.NewImage(1280, 720)
+	s.Draw(screen) // warmup
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		s.Draw(screen)
+	}
+}
+
+func BenchmarkDraw_Mixed_Immediate(b *testing.B) {
+	s := setupMixedScene(5000, 5)
+	screen := ebiten.NewImage(1280, 720)
+	s.Draw(screen) // warmup
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		s.Draw(screen)
+	}
+}
+
+func BenchmarkDraw_Mixed_Coalesced(b *testing.B) {
+	s := setupMixedScene(5000, 5)
+	s.SetBatchMode(BatchModeCoalesced)
+	screen := ebiten.NewImage(1280, 720)
+	s.Draw(screen) // warmup
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		s.Draw(screen)
+	}
+}
+
+func BenchmarkDraw_WorstCase_Immediate(b *testing.B) {
+	s := setupWorstCaseScene(10000)
+	screen := ebiten.NewImage(1280, 720)
+	s.Draw(screen) // warmup
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		s.Draw(screen)
+	}
+}
+
+func BenchmarkDraw_WorstCase_Coalesced(b *testing.B) {
+	s := setupWorstCaseScene(10000)
+	s.SetBatchMode(BatchModeCoalesced)
+	screen := ebiten.NewImage(1280, 720)
+	s.Draw(screen) // warmup
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		s.Draw(screen)
+	}
+}
+
+// setupRealWorldAtlasScene creates a scene simulating a real tilemap/game
+// scenario: two 4096×4096 atlas pages (full-size like a real texture packer
+// output), with sprites grouped in runs of `runLen` alternating between the
+// two pages, repeated `runs` times.
+// Total sprites = runLen * runs.
+func setupRealWorldAtlasScene(runLen, runs int) *Scene {
+	s := NewScene()
+	pages := [2]*ebiten.Image{
+		ebiten.NewImage(4096, 4096),
+		ebiten.NewImage(4096, 4096),
+	}
+	for i, p := range pages {
+		s.RegisterPage(i, p)
+	}
+	root := s.Root()
+	total := runLen * runs
+	for i := 0; i < total; i++ {
+		// Determine which page based on which run we're in.
+		run := i / runLen
+		page := uint16(run % 2)
+		// Tile-like regions at varying positions within the atlas page.
+		tileX := uint16((i % 64) * 64) // 64 tiles across = 4096
+		tileY := uint16((i / 64 % 64) * 64)
+		region := TextureRegion{
+			Page:      page,
+			X:         tileX,
+			Y:         tileY,
+			Width:     64,
+			Height:    64,
+			OriginalW: 64,
+			OriginalH: 64,
+		}
+		sp := NewSprite("tile", region)
+		sp.X = float64(i%100) * 64
+		sp.Y = float64(i/100) * 64
+		root.AddChild(sp)
+	}
+	return s
+}
+
+func BenchmarkDraw_RealWorldAtlas_Immediate(b *testing.B) {
+	s := setupRealWorldAtlasScene(1000, 10) // 10K sprites, 10 page swaps
+	screen := ebiten.NewImage(1280, 720)
+	s.Draw(screen) // warmup
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		s.Draw(screen)
+	}
+}
+
+func BenchmarkDraw_RealWorldAtlas_Coalesced(b *testing.B) {
+	s := setupRealWorldAtlasScene(1000, 10) // 10K sprites, 10 page swaps
+	s.SetBatchMode(BatchModeCoalesced)
+	screen := ebiten.NewImage(1280, 720)
+	s.Draw(screen) // warmup
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		s.Draw(screen)
 	}
 }

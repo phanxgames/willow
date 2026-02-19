@@ -39,6 +39,17 @@ type InteractionEvent struct {
 	RotDelta   float64 // frame-to-frame rotation change in radians
 }
 
+// BatchMode controls how the render pipeline submits draw calls.
+type BatchMode uint8
+
+const (
+	// BatchModeCoalesced accumulates vertices and submits one DrawTriangles32 per batch key run.
+	// This is the default mode.
+	BatchModeCoalesced BatchMode = iota
+	// BatchModeImmediate submits one DrawImage per sprite (legacy).
+	BatchModeImmediate
+)
+
 const defaultCommandCap = 1024
 
 // Scene is the top-level object that owns the node tree, cameras, input state,
@@ -57,6 +68,11 @@ type Scene struct {
 
 	// Cameras
 	cameras []*Camera
+
+	// Batch mode
+	batchMode  BatchMode
+	batchVerts []ebiten.Vertex // preallocated vertex accumulation buffer
+	batchInds  []uint32        // preallocated index accumulation buffer
 
 	// Render state
 	commands      []RenderCommand
@@ -287,12 +303,20 @@ func (s *Scene) drawWithCamera(target *ebiten.Image, cam *Camera) {
 		t0 = time.Now()
 	}
 
-	s.submitBatches(target)
+	if s.batchMode == BatchModeCoalesced {
+		s.submitBatchesCoalesced(target)
+	} else {
+		s.submitBatches(target)
+	}
 
 	if s.debug {
 		stats.submitTime = time.Since(t0)
 		stats.batchCount = countBatches(s.commands)
-		stats.drawCallCount = countDrawCalls(s.commands)
+		if s.batchMode == BatchModeCoalesced {
+			stats.drawCallCount = countDrawCallsCoalesced(s.commands)
+		} else {
+			stats.drawCallCount = countDrawCalls(s.commands)
+		}
 		s.debugLog(stats)
 	}
 
@@ -337,6 +361,12 @@ func (s *Scene) SetDebugMode(enabled bool) {
 	s.debug = enabled
 	globalDebug = enabled
 }
+
+// SetBatchMode sets the draw-call batching strategy.
+func (s *Scene) SetBatchMode(mode BatchMode) { s.batchMode = mode }
+
+// BatchMode returns the current draw-call batching strategy.
+func (s *Scene) GetBatchMode() BatchMode { return s.batchMode }
 
 // globalDebug mirrors the most recently set Scene debug flag so that node
 // operations (which lack a Scene pointer) can check it cheaply. Only valid

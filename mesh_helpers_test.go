@@ -459,8 +459,8 @@ func TestPolygonFanTriangulation(t *testing.T) {
 	if len(n.Indices) != 6 {
 		t.Errorf("indices = %d, want 6", len(n.Indices))
 	}
-	// Fan: indices should be [0,1,2, 0,2,3]
-	expected := []uint16{0, 1, 2, 0, 2, 3}
+	// Ear-clip: first ear is vertex 0 (triangle 3,0,1), remainder is 1,2,3
+	expected := []uint16{3, 0, 1, 1, 2, 3}
 	for i, idx := range expected {
 		if n.Indices[i] != idx {
 			t.Errorf("Indices[%d] = %d, want %d", i, n.Indices[i], idx)
