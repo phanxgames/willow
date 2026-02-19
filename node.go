@@ -245,6 +245,9 @@ type Node struct {
 	// OnPointerLeave fires when the pointer leaves this node's bounds.
 	OnPointerLeave func(PointerContext)
 
+	// Static command cache (nil when unused — 8 bytes overhead per node)
+	staticCache *staticCacheData
+
 	// Internal
 	disposed       bool
 	childrenSorted bool
@@ -367,6 +370,10 @@ func (n *Node) AddChild(child *Node) {
 	n.children = append(n.children, child)
 	n.childrenSorted = false
 	markSubtreeDirty(child)
+	if n.staticCache != nil {
+		n.staticCache.valid = false
+	}
+	invalidateAncestorCache(n)
 	if globalDebug {
 		debugCheckTreeDepth(child)
 		debugCheckChildCount(n)
@@ -398,6 +405,10 @@ func (n *Node) AddChildAt(child *Node, index int) {
 	n.children[index] = child
 	n.childrenSorted = false
 	markSubtreeDirty(child)
+	if n.staticCache != nil {
+		n.staticCache.valid = false
+	}
+	invalidateAncestorCache(n)
 	if globalDebug {
 		debugCheckTreeDepth(child)
 		debugCheckChildCount(n)
@@ -418,6 +429,10 @@ func (n *Node) RemoveChild(child *Node) {
 	child.Parent = nil
 	n.childrenSorted = false
 	markSubtreeDirty(child)
+	if n.staticCache != nil {
+		n.staticCache.valid = false
+	}
+	invalidateAncestorCache(n)
 }
 
 // RemoveChildAt removes and returns the child at the given index.
@@ -436,6 +451,10 @@ func (n *Node) RemoveChildAt(index int) *Node {
 	child.Parent = nil
 	n.childrenSorted = false
 	markSubtreeDirty(child)
+	if n.staticCache != nil {
+		n.staticCache.valid = false
+	}
+	invalidateAncestorCache(n)
 	return child
 }
 
@@ -457,6 +476,10 @@ func (n *Node) RemoveChildren() {
 	}
 	n.children = n.children[:0]
 	n.childrenSorted = true
+	if n.staticCache != nil {
+		n.staticCache.valid = false
+	}
+	invalidateAncestorCache(n)
 }
 
 // Children returns the child list. The returned slice MUST NOT be mutated by the caller.
@@ -515,6 +538,49 @@ func (n *Node) SetZIndex(z int) {
 	if n.Parent != nil {
 		n.Parent.childrenSorted = false
 	}
+	invalidateAncestorCache(n)
+}
+
+// --- Static subtree command cache API ---
+
+// SetStaticCache enables or disables command caching on this container's subtree.
+// When enabled, render commands are captured on the first frame and replayed
+// on subsequent frames, skipping the recursive tree walk entirely.
+// Call InvalidateStaticCache when the subtree content changes.
+func (n *Node) SetStaticCache(enabled bool) {
+	if enabled {
+		if n.staticCache == nil {
+			n.staticCache = &staticCacheData{}
+		}
+		n.staticCache.valid = false
+		n.staticCache.blocked = false
+	} else {
+		n.staticCache = nil
+	}
+}
+
+// InvalidateStaticCache forces the static command cache to rebuild on the next frame.
+// No-op if static caching is not enabled.
+func (n *Node) InvalidateStaticCache() {
+	if n.staticCache != nil {
+		n.staticCache.valid = false
+	}
+}
+
+// IsStaticCacheValid reports whether the static cache has valid cached commands.
+func (n *Node) IsStaticCacheValid() bool {
+	return n.staticCache != nil && n.staticCache.valid
+}
+
+// invalidateAncestorCache walks up the tree from n to find the nearest
+// ancestor with a static cache and marks it invalid.
+func invalidateAncestorCache(n *Node) {
+	for p := n.Parent; p != nil; p = p.Parent {
+		if p.staticCache != nil {
+			p.staticCache.valid = false
+			return
+		}
+	}
 }
 
 // --- Disposal ---
@@ -548,6 +614,7 @@ func (n *Node) dispose() {
 	}
 	n.cacheDirty = false
 	n.mask = nil
+	n.staticCache = nil
 	n.customImage = nil
 	n.MeshImage = nil
 	n.transformedVerts = nil
@@ -598,8 +665,18 @@ func (n *Node) removeChildByPtr(child *Node) {
 
 // markSubtreeDirty sets transformDirty on node and all its descendants.
 func markSubtreeDirty(node *Node) {
+	invalidateAncestorCache(node)
 	node.transformDirty = true
 	for _, child := range node.children {
-		markSubtreeDirty(child)
+		markSubtreeDirtyNoInvalidate(child)
+	}
+}
+
+// markSubtreeDirtyNoInvalidate is the recursive inner loop — ancestor cache
+// invalidation only needs to happen once from the subtree root.
+func markSubtreeDirtyNoInvalidate(node *Node) {
+	node.transformDirty = true
+	for _, child := range node.children {
+		markSubtreeDirtyNoInvalidate(child)
 	}
 }

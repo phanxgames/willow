@@ -5,11 +5,13 @@ package willow
 // part of the scene tree — its transforms are relative to the masked node.
 func (n *Node) SetMask(maskNode *Node) {
 	n.mask = maskNode
+	invalidateAncestorCache(n)
 }
 
 // ClearMask removes the mask from this node.
 func (n *Node) ClearMask() {
 	n.mask = nil
+	invalidateAncestorCache(n)
 }
 
 // GetMask returns the current mask node, or nil if no mask is set.

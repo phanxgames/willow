@@ -135,6 +135,80 @@ func BenchmarkDraw_10000Sprites_AlphaVarying_Coalesced(b *testing.B) {
 	}
 }
 
+// --- Static Cache Benchmarks ---
+
+// setupStaticCacheBenchScene creates a scene with a single container (static cached)
+// holding n sprites for benchmark use.
+func setupStaticCacheBenchScene(n int) *Scene {
+	s := NewScene()
+	root := s.Root()
+	container := NewContainer("cached")
+	container.SetStaticCache(true)
+	root.AddChild(container)
+	region := TextureRegion{
+		Page:      magentaPlaceholderPage,
+		Width:     32,
+		Height:    32,
+		OriginalW: 32,
+		OriginalH: 32,
+	}
+	for i := 0; i < n; i++ {
+		sp := NewSprite("sp", region)
+		sp.X = float64(i%100) * 40
+		sp.Y = float64(i/100) * 40
+		container.AddChild(sp)
+	}
+	return s
+}
+
+func BenchmarkDraw_10000Sprites_StaticCache_Replay(b *testing.B) {
+	s := setupStaticCacheBenchScene(10000)
+	screen := ebiten.NewImage(1280, 720)
+
+	// Warm up: first draw builds the cache.
+	s.Draw(screen)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		s.Draw(screen)
+	}
+}
+
+func BenchmarkDraw_10000Sprites_StaticCache_Build(b *testing.B) {
+	s := setupStaticCacheBenchScene(10000)
+	screen := ebiten.NewImage(1280, 720)
+
+	// Warm up to populate sortBuf etc.
+	s.Draw(screen)
+
+	container := s.Root().ChildAt(0)
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		container.InvalidateStaticCache()
+		s.Draw(screen)
+	}
+}
+
+func BenchmarkDraw_10000Sprites_StaticCache_ContainerMove(b *testing.B) {
+	s := setupStaticCacheBenchScene(10000)
+	screen := ebiten.NewImage(1280, 720)
+
+	// Warm up: first draw builds the cache.
+	s.Draw(screen)
+
+	container := s.Root().ChildAt(0)
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		// Moving the container itself does NOT invalidate the static cache.
+		container.X = float64(i % 100)
+		container.transformDirty = true
+		s.Draw(screen)
+	}
+}
+
 // --- Particle Draw Benchmarks (Immediate vs Coalesced) ---
 
 func setupParticleDrawScene(mode BatchMode) *Scene {

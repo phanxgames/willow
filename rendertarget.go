@@ -82,6 +82,7 @@ func (n *Node) SetCacheAsTexture(enabled bool) {
 	} else {
 		n.cacheDirty = true
 	}
+	invalidateAncestorCache(n)
 }
 
 // InvalidateCache marks the cached texture as dirty so it will be re-rendered

@@ -130,6 +130,7 @@ func (n *Node) SetPosition(x, y float64) {
 	n.X = x
 	n.Y = y
 	n.transformDirty = true
+	invalidateAncestorCache(n)
 }
 
 // SetScale sets the node's ScaleX and ScaleY and marks it dirty.
@@ -137,12 +138,14 @@ func (n *Node) SetScale(sx, sy float64) {
 	n.ScaleX = sx
 	n.ScaleY = sy
 	n.transformDirty = true
+	invalidateAncestorCache(n)
 }
 
 // SetRotation sets the node's rotation (in radians) and marks it dirty.
 func (n *Node) SetRotation(r float64) {
 	n.Rotation = r
 	n.transformDirty = true
+	invalidateAncestorCache(n)
 }
 
 // SetSkew sets the node's SkewX and SkewY (in radians) and marks it dirty.
@@ -150,6 +153,7 @@ func (n *Node) SetSkew(sx, sy float64) {
 	n.SkewX = sx
 	n.SkewY = sy
 	n.transformDirty = true
+	invalidateAncestorCache(n)
 }
 
 // SetPivot sets the node's PivotX and PivotY and marks it dirty.
@@ -157,18 +161,21 @@ func (n *Node) SetPivot(px, py float64) {
 	n.PivotX = px
 	n.PivotY = py
 	n.transformDirty = true
+	invalidateAncestorCache(n)
 }
 
 // SetAlpha sets the node's alpha and marks it dirty.
 func (n *Node) SetAlpha(a float64) {
 	n.Alpha = a
 	n.transformDirty = true
+	invalidateAncestorCache(n)
 }
 
 // MarkDirty marks the node's transform as dirty, forcing recomputation
 // on the next frame. Useful after bulk-setting fields directly.
 func (n *Node) MarkDirty() {
 	n.transformDirty = true
+	invalidateAncestorCache(n)
 }
 
 // --- Coordinate conversion ---
