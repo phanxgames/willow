@@ -101,7 +101,8 @@ Runnable examples are included in the [examples/](examples/) directory:
 go run ./examples/basic        # Bouncing colored sprite
 go run ./examples/shapes       # Rotating polygon hierarchy with parent/child transforms
 go run ./examples/interaction  # Draggable, clickable rectangles with color toggle
-go run ./examples/text         # TTF text with colors, alignment, word wrap, and outline
+go run ./examples/text         # Bitmap font text with colors, alignment, word wrap
+go run ./examples/texttf       # TTF text with colors, per-line alignment, word wrap, and outline
 go run ./examples/tweens       # Position, scale, rotation, alpha, and color tweens
 go run ./examples/particles    # Fountain, campfire, and sparkler particle effects
 go run ./examples/shaders      # 3x3 grid showcasing all built-in shader filters
@@ -151,7 +152,7 @@ Willow is designed around a zero-allocation-per-frame contract on the hot path:
 - Render-texture pooling by power-of-two size buckets
 - Value-type `DrawImageOptions` declared once, reused per iteration
 
-**Subtree command caching** (`SetCacheAsTree`) avoids re-traversing static subtrees entirely. Commands are stored at cache time and replayed with a single matrix multiply per command. Camera movement, parent transforms, and alpha changes are handled via delta remapping — the cache is never invalidated for movement.
+**Subtree command caching** (`SetCacheAsTree`) avoids re-traversing static subtrees entirely. Commands are stored at cache time and replayed with a single matrix multiply per command. Camera movement, parent transforms, and alpha changes are handled via delta remapping. Animated tiles (UV swaps within the same atlas page) are handled automatically via a two-tier source pointer indirection - no invalidation, no API overhead. This is designed to allow batch group of tilemaps with animated tiles (e.g. water) to be performance-optimized by avoiding full subtree invalidation on every frame.
 
 | Scenario (10K sprites) | Time | vs uncached |
 |---|---|---|
@@ -160,7 +161,7 @@ Willow is designed around a zero-allocation-per-frame contract on the hot path:
 | Auto cache, 1% of children moving | ~4.0 ms | ~1.2x faster |
 | No cache (baseline) | ~4.9 ms | — |
 
-The cache is per-container: one child moving invalidates the whole container (auto mode). Separate static content (tilemaps, UI panels) from dynamic content (players, projectiles) into different containers for best results.
+The cache is per-container, and will be invalidated if a child within the container moves. It is recommended to separate static content (tilemaps, UI panels) from dynamic content (players, projectiles) into different containers for best results.
 
 Benchmark suite included: `go test -bench . -benchmem`
 
@@ -168,10 +169,12 @@ Benchmark suite included: `go test -bench . -benchmem`
 
 ## Roadmap
 
+- **Spatial chunking for CacheAsTree** — Grid-based chunk culling so large tilemaps (40K+ tiles) only replay visible cached commands instead of the full set. Build-time spatial indexing with O(visible) replay cost. Designed for camera-panning scenarios where CacheAsTree captures the entire map but only a viewport-sized portion is on screen. See `spec/_archive/cache-as-tree-culling.md` for the full design.
+- **Dynamic atlas packing** — Runtime `Atlas.Add(name, img)` for lazy asset loading. Shelf/guillotine packing into existing atlas pages to preserve batching.
+- UI widget layer (buttons, text input, layout, focus traversal) as a separate companion library (willow-ui)
 - Example projects and starter templates
 - Comprehensive API documentation and guides
 - Tutorials and integration walkthroughs
-- UI widget layer (buttons, text input, layout, focus traversal) as a separate companion library (willow-ui)
 - Performance profiling across mobile and WebAssembly targets
 - Community feedback and API stabilization
 
