@@ -554,10 +554,10 @@ func (f *PaletteFilter) ensurePaletteTex(w, h int) {
 			}
 			c := f.Palette[idx]
 			off := (row*w + x) * 4
-			f.pixBuf[off+0] = byte(c.R * c.A * 255)
-			f.pixBuf[off+1] = byte(c.G * c.A * 255)
-			f.pixBuf[off+2] = byte(c.B * c.A * 255)
-			f.pixBuf[off+3] = byte(c.A * 255)
+			f.pixBuf[off+0] = byte(c.R*c.A*255 + 0.5)
+			f.pixBuf[off+1] = byte(c.G*c.A*255 + 0.5)
+			f.pixBuf[off+2] = byte(c.B*c.A*255 + 0.5)
+			f.pixBuf[off+3] = byte(c.A*255 + 0.5)
 		}
 	}
 	f.paletteTex.WritePixels(f.pixBuf)

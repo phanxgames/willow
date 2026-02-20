@@ -265,7 +265,6 @@ func (s *Scene) Draw(screen *ebiten.Image) {
 		s.drawWithCamera(screen, nil)
 	} else {
 		for _, cam := range s.cameras {
-			cam.computeViewMatrix()
 			vp := cam.Viewport
 			viewportImg := screen.SubImage(image.Rect(
 				int(vp.X), int(vp.Y),

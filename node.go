@@ -544,9 +544,10 @@ func (n *Node) RemoveFromParent() {
 // RemoveChildren detaches all children from this node.
 // Children are NOT disposed.
 func (n *Node) RemoveChildren() {
-	for _, child := range n.children {
+	for i, child := range n.children {
 		child.Parent = nil
 		markSubtreeDirty(child)
+		n.children[i] = nil // allow GC of removed children
 	}
 	n.children = n.children[:0]
 	n.childrenSorted = true

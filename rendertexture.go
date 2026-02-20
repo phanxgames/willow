@@ -169,7 +169,7 @@ func applyDrawOpts(op *ebiten.DrawImageOptions, opts RenderTextureDrawOpts, offs
 	op.GeoM.Translate(opts.X+offsetX+opts.PivotX, opts.Y+offsetY+opts.PivotY)
 
 	alpha := opts.Alpha
-	if alpha == 0 && opts.Color == (Color{}) {
+	if alpha == 0 {
 		alpha = 1
 	}
 	c := opts.Color

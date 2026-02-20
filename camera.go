@@ -102,6 +102,7 @@ func (c *Camera) ClearBounds() {
 // update advances follow, scroll, and bounds clamping. Called from Scene.Update().
 func (c *Camera) update(dt float32) {
 	prevX, prevY := c.X, c.Y
+	prevZoom, prevRot := c.Zoom, c.Rotation
 
 	// Follow target
 	if c.followTarget != nil && !c.followTarget.IsDisposed() {
@@ -133,7 +134,7 @@ func (c *Camera) update(dt float32) {
 		c.clampToBounds()
 	}
 
-	if c.X != prevX || c.Y != prevY {
+	if c.X != prevX || c.Y != prevY || c.Zoom != prevZoom || c.Rotation != prevRot {
 		c.dirty = true
 	}
 }
