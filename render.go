@@ -521,13 +521,9 @@ func (s *Scene) replayCacheAsTree(n *Node, containerTransform32 [6]float32, cont
 		s.commands = append(s.commands, cmd)
 	}
 
-	// Update snapshots for next frame's delta.
-	if transformChanged {
-		n.cachedParentTransform = containerTransform32
-	}
-	if alphaChanged {
-		n.cachedParentAlpha = containerAlpha
-	}
+	// NOTE: Do NOT update cachedParentTransform/cachedParentAlpha here.
+	// The cached cmd.Transform values are always from build time, so the
+	// delta must always be relative to the build-time parent transform.
 }
 
 // buildCacheAsTree traverses the container's subtree normally, captures
@@ -551,7 +547,10 @@ func (s *Scene) buildCacheAsTree(n *Node, containerTransform32 [6]float32, conta
 		}
 	}
 
-	// Traverse children normally.
+	// Traverse children with culling disabled — the cache must capture ALL
+	// children regardless of current viewport so panning replays correctly.
+	prevCull := s.cullActive
+	s.cullActive = false
 	if len(n.children) > 0 {
 		children := n.children
 		if !n.childrenSorted {
@@ -564,6 +563,7 @@ func (s *Scene) buildCacheAsTree(n *Node, containerTransform32 [6]float32, conta
 			s.traverse(child, treeOrder)
 		}
 	}
+	s.cullActive = prevCull
 
 	// Restore building flag.
 	s.buildingCacheFor = prevBuilding
