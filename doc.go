@@ -368,6 +368,152 @@
 // Dirty flags skip transform recomputation for static subtrees.
 // Typed callback slices avoid interface boxing in event dispatch.
 //
+// # Caching strategy
+//
+// Willow provides two caching mechanisms that solve different bottlenecks.
+// Choosing the right one (or combining both) is the single biggest lever
+// for frame-time optimization.
+//
+// # SetCacheAsTree — skip CPU traversal
+//
+// [Node.SetCacheAsTree] stores the render commands emitted by a container's
+// subtree and replays them on subsequent frames with a matrix multiply per
+// command instead of re-walking the tree. This targets CPU time: the
+// traversal, transform computation, and command emission for N children
+// collapse to a memcpy + delta remap.
+//
+// When to use it:
+//
+//   - Large, mostly-static containers (tilemaps, background layers, UI panels)
+//   - Scenes where the camera scrolls every frame but the content does not move
+//   - Containers with animated tiles that swap UV coordinates on the same atlas page
+//
+// When NOT to use it:
+//
+//   - Containers where many children move individually every frame — one child's
+//     [Node.SetPosition] invalidates the entire container's cache (auto mode)
+//     or produces stale output (manual mode)
+//   - Containers that hold mesh nodes or particle emitters — these block caching
+//     entirely and fall back to normal traversal
+//
+// Two modes are available:
+//
+//   - [CacheTreeAuto] (default) — descendant setters auto-invalidate the cache.
+//     Always correct, small per-setter overhead. Good for UI panels that
+//     update occasionally.
+//   - [CacheTreeManual] — only [Node.InvalidateCacheTree] triggers a rebuild.
+//     Zero setter overhead. Best for large tilemaps where you control exactly
+//     when tiles change.
+//
+// Setup example (tilemap with animated water):
+//
+//	tilemap := willow.NewContainer("tilemap")
+//	tilemap.SetCacheAsTree(true, willow.CacheTreeManual)
+//	for _, tile := range tiles {
+//	    tilemap.AddChild(tile)
+//	}
+//	scene.Root().AddChild(tilemap)
+//
+//	// Animate water tiles every N frames — does NOT invalidate the cache
+//	// because the UV swap stays on the same atlas page:
+//	waterTile.SetTextureRegion(waterFrames[frame])
+//
+//	// If you add/remove tiles at runtime, invalidate manually:
+//	tilemap.InvalidateCacheTree()
+//
+// Caveats:
+//
+//   - The cache is per-container. Separate static content (tilemaps) from
+//     dynamic content (players, projectiles) into different containers.
+//   - Mesh and particle emitter children block caching — move them to an
+//     uncached sibling container.
+//   - Changing a tile's texture to a different atlas page invalidates the
+//     cache because page changes affect batch keys. Keep all animation
+//     frames on the same atlas page.
+//   - In manual mode, forgetting to call [Node.InvalidateCacheTree] after
+//     structural changes (AddChild, RemoveChild, SetVisible) produces stale
+//     visual output. Prefer auto mode unless profiling shows the setter
+//     overhead matters.
+//
+// Benchmark results (10K sprites):
+//
+//	Manual cache, camera scrolling       ~39 µs   (~125x faster than uncached)
+//	Manual cache, 100 animated UV swaps  ~1.97 ms (~2.5x faster)
+//	Auto cache, 1% children moving       ~4.0 ms  (~1.2x faster)
+//	No cache (baseline)                  ~4.9 ms
+//
+// # SetCacheAsTexture — skip GPU draw calls
+//
+// [Node.SetCacheAsTexture] renders a node's entire subtree to an offscreen
+// image once, then draws that single texture on subsequent frames. This
+// targets GPU draw-call count: N children become one textured quad.
+//
+// When to use it:
+//
+//   - Nodes with expensive filter chains (blur, outline, palette swap) — the
+//     filter is applied once and the result is reused
+//   - Complex visual effects that combine masking and filters
+//   - Small, visually-rich subtrees where draw-call reduction matters more
+//     than pixel-perfect scaling
+//
+// When NOT to use it:
+//
+//   - Large scrolling tilemaps — the texture is rasterized at a fixed
+//     resolution and will blur if the camera zooms in past that resolution
+//   - Subtrees that change frequently — every change requires a full
+//     re-render to the offscreen texture
+//   - Nodes that need pixel-perfect rendering at varying zoom levels
+//
+// Setup example (filtered badge):
+//
+//	badge := willow.NewContainer("badge")
+//	badge.AddChild(icon)
+//	badge.AddChild(label)
+//	badge.Filters = []willow.Filter{
+//	    willow.NewOutlineFilter(2, willow.Color{R: 1, G: 1, B: 0, A: 1}),
+//	}
+//	badge.SetCacheAsTexture(true)
+//	scene.Root().AddChild(badge)
+//
+//	// When the badge content changes, invalidate:
+//	badge.InvalidateCache()
+//
+// Caveats:
+//
+//   - The offscreen texture is allocated at the subtree's bounding-box size
+//     (rounded up to the next power of two). Very large subtrees consume
+//     significant GPU memory.
+//   - Zooming the camera past the cached resolution produces blurry output.
+//     If the camera zooms dynamically, prefer [Node.SetCacheAsTree] instead.
+//   - The texture is re-rendered from scratch on invalidation — there is no
+//     partial update. Frequent invalidation can be worse than no caching.
+//
+// # Choosing between the two
+//
+// Use [Node.SetCacheAsTree] when the bottleneck is CPU traversal of large
+// static subtrees (tilemaps, backgrounds). The output is N render commands
+// replayed from cache — still pixel-perfect at any zoom, animated tiles
+// work for free, and camera movement never invalidates.
+//
+// Use [Node.SetCacheAsTexture] when the bottleneck is GPU draw calls or
+// filter cost. The output is a single textured quad — minimal GPU work,
+// but locked to a fixed resolution.
+//
+// They can be combined: a tilemap container uses SetCacheAsTree for fast
+// traversal, while a filtered HUD badge inside it uses SetCacheAsTexture
+// to avoid re-applying shaders every frame.
+//
+// # Recommended scene layout for performance
+//
+// Organize your scene tree to maximize cache effectiveness:
+//
+//	scene.Root()
+//	├── tilemap      (SetCacheAsTree, manual mode — thousands of tiles)
+//	├── entities     (NO cache — players, enemies, projectiles move every frame)
+//	├── particles    (NO cache — emitters block tree caching)
+//	└── ui           (SetCacheAsTree, auto mode — panels that update occasionally)
+//	    └── badge    (SetCacheAsTexture — filtered, rarely changes)
+//
 // [Ebitengine]: https://ebitengine.org
 // [TexturePacker]: https://www.codeandweb.com/texturepacker
 // [gween]: https://github.com/tanema/gween

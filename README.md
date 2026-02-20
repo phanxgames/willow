@@ -29,8 +29,6 @@ willow                - scene graph, rendering, interaction
 Ebitengine            - GPU backend, window, audio, platform
 ```
 
-Willow is not a game engine. It is not a framework. It does not own your game loop, impose an architecture, or make decisions for you. You call `scene.Update()` and `scene.Draw(screen)` from your own `ebiten.Game` implementation, and Willow handles the rest.
-
 ---
 
 ## Why does Willow exist?
@@ -60,6 +58,8 @@ Inspired by [Starling](https://gamua.com/starling/), Flash display lists, and [P
 ```bash
 go get github.com/phanxgames/willow@latest
 ```
+
+For quick setup, call `willow.Run(scene, config)` and Willow handles the window and game loop. For full control, implement `ebiten.Game` yourself and call `scene.Update()` and `scene.Draw(screen)` directly — both paths are first-class.
 
 ```go
 package main
