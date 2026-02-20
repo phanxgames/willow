@@ -90,23 +90,59 @@ func nextNodeID() uint32 {
 
 // Node is the fundamental scene graph element. A single flat struct is used for
 // all node types to avoid interface dispatch on the hot path.
+//
+// Field order is performance-critical: the gc compiler lays out fields in
+// declaration order. Hot-path fields (traverse, updateWorldTransform) are
+// packed first so they share cache lines. Cold fields (callbacks, mesh data,
+// metadata) are pushed to the tail. Do not reorder without benchmarking.
 type Node struct {
-	// Identity
+	// ---- HOT: traverse flags (cache line 0) ----
+	// These 8 single-byte fields pack into the first 8 bytes with zero padding.
 
-	// ID is a unique auto-assigned identifier (never zero for live nodes).
-	ID uint32
-	// Name is a human-readable label for debugging; not used for lookups.
-	Name string
+	// Visible controls whether this node and its subtree are drawn.
+	// An invisible node is also excluded from hit testing.
+	Visible bool
+	// Renderable controls whether this node emits render commands. When false
+	// the node is skipped during drawing but its children are still traversed.
+	Renderable     bool
+	transformDirty bool
+	alphaDirty     bool
+	childrenSorted bool
 	// Type determines how this node is rendered (container, sprite, mesh, etc.).
 	Type NodeType
+	// RenderLayer is the primary sort key for render commands.
+	// All commands in a lower layer draw before any command in a higher layer.
+	RenderLayer uint8
+	// BlendMode selects the compositing operation used when drawing this node.
+	BlendMode BlendMode
 
-	// Hierarchy
+	// ---- HOT: computed world state (cache lines 0-1) ----
 
-	// Parent points to this node's parent, or nil for the root.
-	Parent   *Node
-	children []*Node
+	worldAlpha float64
+	// Alpha is the node's opacity in [0, 1]. Multiplied with the parent's
+	// computed alpha, so children inherit transparency.
+	Alpha          float64
+	worldTransform [6]float64
 
-	// Transform (local, relative to Parent)
+	// ---- HOT: children for iteration (cache line 1-2) ----
+
+	children       []*Node
+	sortedChildren []*Node // reused buffer for ZIndex-sorted traversal order
+
+	// ---- HOT: render command fields (cache lines 2-3) ----
+
+	staticCache *staticCacheData  // checked early in traverse
+	customImage *ebiten.Image     // user-provided offscreen canvas (RenderTexture)
+	// GlobalOrder is a secondary sort key within the same RenderLayer.
+	// Set it to override the default tree-order sorting.
+	GlobalOrder int
+	// TextureRegion identifies the sub-image within an atlas page to draw.
+	TextureRegion TextureRegion
+	// Color is a multiplicative tint applied to the sprite. The default
+	// {1,1,1,1} means no tint.
+	Color Color
+
+	// ---- WARM: local transform (read only when dirty) ----
 
 	// X and Y are the local-space position in pixels (origin at top-left, Y down).
 	X, Y float64
@@ -122,59 +158,24 @@ type Node struct {
 	PivotX float64
 	PivotY float64
 
-	// Computed (unexported, updated during traversal)
-	worldTransform [6]float64
-	worldAlpha     float64
-	transformDirty bool
-	alphaDirty     bool
+	// ---- COLD: hierarchy, identity, metadata ----
 
-	// Visibility & interaction
-
-	// Alpha is the node's opacity in [0, 1]. Multiplied with the parent's
-	// computed alpha, so children inherit transparency.
-	Alpha float64
-	// Visible controls whether this node and its subtree are drawn.
-	// An invisible node is also excluded from hit testing.
-	Visible bool
-	// Renderable controls whether this node emits render commands. When false
-	// the node is skipped during drawing but its children are still traversed.
-	Renderable bool
-	// Interactable controls whether this node responds to pointer events.
-	// When false the entire subtree is excluded from hit testing.
-	Interactable bool
-
-	// Ordering
-
+	// Parent points to this node's parent, or nil for the root.
+	Parent *Node
+	// ID is a unique auto-assigned identifier (never zero for live nodes).
+	ID uint32
 	// ZIndex controls draw order among siblings. Higher values draw on top.
 	// Use SetZIndex to change this so the parent is notified to re-sort.
 	ZIndex int
-	// RenderLayer is the primary sort key for render commands.
-	// All commands in a lower layer draw before any command in a higher layer.
-	RenderLayer uint8
-	// GlobalOrder is a secondary sort key within the same RenderLayer.
-	// Set it to override the default tree-order sorting.
-	GlobalOrder int
-
-	// Metadata
-
-	// UserData is an arbitrary value the application can attach to a node.
-	UserData any
 	// EntityID links this node to an ECS entity. When non-zero, interaction
 	// events on this node are forwarded to the Scene's EntityStore.
 	EntityID uint32
+	// Name is a human-readable label for debugging; not used for lookups.
+	Name string
+	// UserData is an arbitrary value the application can attach to a node.
+	UserData any
 
-	// Sprite fields (NodeTypeSprite)
-
-	// TextureRegion identifies the sub-image within an atlas page to draw.
-	TextureRegion TextureRegion
-	// BlendMode selects the compositing operation used when drawing this node.
-	BlendMode BlendMode
-	// Color is a multiplicative tint applied to the sprite. The default
-	// {1,1,1,1} means no tint.
-	Color       Color
-	customImage *ebiten.Image // user-provided offscreen canvas (RenderTexture)
-
-	// Mesh fields (NodeTypeMesh)
+	// ---- COLD: mesh fields (NodeTypeMesh) ----
 
 	// Vertices holds the mesh vertex data for DrawTriangles.
 	Vertices []ebiten.Vertex
@@ -186,43 +187,39 @@ type Node struct {
 	meshAABB         Rect            // cached local-space AABB
 	meshAABBDirty    bool            // recompute AABB when true
 
-	// Particle fields (NodeTypeParticleEmitter)
+	// ---- COLD: particle and text ----
 
 	// Emitter manages the particle pool and simulation for this node.
 	Emitter *ParticleEmitter
-
-	// Text fields (NodeTypeText)
-
 	// TextBlock holds the text content, font, and cached layout state.
 	TextBlock *TextBlock
 
-	// Update field (optional callback)
+	// ---- COLD: update callback ----
 
 	// OnUpdate is called once per tick during Scene.Update if set.
 	OnUpdate func(dt float64)
 
-	// Hit testing
+	// ---- COLD: hit testing ----
 
+	// Interactable controls whether this node responds to pointer events.
+	// When false the entire subtree is excluded from hit testing.
+	Interactable bool
 	// HitShape overrides the default AABB hit test with a custom shape.
 	// Nil means use the node's bounding box.
 	HitShape HitShape
 
-	// Filters
+	// ---- COLD: filters, cache, mask ----
 
 	// Filters is the chain of visual effects applied to this node's rendered
 	// output. Filters are applied in order; each reads from the previous
 	// result and writes to a new buffer.
-	Filters []Filter
-
-	// Cache fields
+	Filters      []Filter
 	cacheEnabled bool
 	cacheTexture *ebiten.Image
 	cacheDirty   bool
+	mask         *Node
 
-	// Mask field
-	mask *Node
-
-	// Per-node callbacks (nil by default; zero cost when unused).
+	// ---- COLD: per-node pointer callbacks (nil by default; zero cost when unused) ----
 	// Scene-level handlers fire before per-node callbacks.
 
 	// OnPointerDown fires when a pointer button is pressed over this node.
@@ -246,13 +243,8 @@ type Node struct {
 	// OnPointerLeave fires when the pointer leaves this node's bounds.
 	OnPointerLeave func(PointerContext)
 
-	// Static command cache (nil when unused — 8 bytes overhead per node)
-	staticCache *staticCacheData
-
-	// Internal
-	disposed       bool
-	childrenSorted bool
-	sortedChildren []*Node // reused buffer for ZIndex-sorted traversal order
+	// ---- COLD: internal ----
+	disposed bool
 }
 
 // nodeDefaults sets the common default field values shared by all constructors.
