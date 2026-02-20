@@ -42,7 +42,11 @@ func main() {
 	cam.Y = (mapHeight * tileSize) / 2
 	cam.MarkDirty()
 
+	// Cache the tilemap's render commands so camera panning replays them
+	// via delta remap instead of re-traversing 900 nodes every frame.
+	// Manual mode is used because tiles never change after setup.
 	mapContainer := willow.NewContainer("tilemap")
+	mapContainer.SetCacheAsTree(true, willow.CacheTreeManual)
 	scene.Root().AddChild(mapContainer)
 
 	// Populate the tilemap with random tiles.
