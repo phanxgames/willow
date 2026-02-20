@@ -251,6 +251,11 @@ func updateNodesAndParticles(n *Node, dt float64) {
 			n.Emitter.worldY = n.worldTransform[5]
 		}
 		n.Emitter.update(dt)
+		// Active particles under a CacheAsTree ancestor must invalidate the
+		// cache each frame so the emitter's commands are re-emitted.
+		if n.Emitter.alive > 0 {
+			invalidateAncestorCache(n)
+		}
 	}
 	for _, child := range n.children {
 		updateNodesAndParticles(child, dt)

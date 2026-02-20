@@ -105,12 +105,16 @@ func Fragment(dst vec4, src vec2, color vec4) vec4 {
 	}
 	// Luminance.
 	lum := 0.299*c.r + 0.587*c.g + 0.114*c.b
-	// Map to palette index with cycle offset.
-	idx := lum*PaletteSize + CycleOffset
+	// Map lum [0,1] to index [0,255] with cycle offset.
+	idx := lum*(PaletteSize-1.0) + CycleOffset
 	idx = mod(idx, PaletteSize)
 	// Look up in palette texture (scaled to match source dimensions).
 	u := (idx + 0.5) / PaletteSize * TexWidth
 	pal := imageSrc1At(vec2(u, 0.5))
+	// Un-premultiply palette color.
+	if pal.a > 0 {
+		pal.rgb /= pal.a
+	}
 	// Re-premultiply with original alpha.
 	return vec4(pal.rgb*c.a, c.a)
 }

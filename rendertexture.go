@@ -95,12 +95,20 @@ func (rt *RenderTexture) DrawSprite(region TextureRegion, x, y float64, blend Bl
 	if page == nil {
 		return
 	}
-	sub := page.SubImage(image.Rect(
-		int(region.X), int(region.Y),
-		int(region.X)+int(region.Width), int(region.Y)+int(region.Height),
-	)).(*ebiten.Image)
+
+	var subRect image.Rectangle
+	if region.Rotated {
+		subRect = image.Rect(int(region.X), int(region.Y), int(region.X)+int(region.Height), int(region.Y)+int(region.Width))
+	} else {
+		subRect = image.Rect(int(region.X), int(region.Y), int(region.X)+int(region.Width), int(region.Y)+int(region.Height))
+	}
+	sub := page.SubImage(subRect).(*ebiten.Image)
 
 	var op ebiten.DrawImageOptions
+	if region.Rotated {
+		op.GeoM.Rotate(-1.5707963267948966) // -π/2
+		op.GeoM.Translate(0, float64(region.Width))
+	}
 	op.GeoM.Translate(x+float64(region.OffsetX), y+float64(region.OffsetY))
 	op.Blend = blend.EbitenBlend()
 	rt.image.DrawImage(sub, &op)
@@ -112,12 +120,20 @@ func (rt *RenderTexture) DrawSpriteColored(region TextureRegion, opts RenderText
 	if page == nil {
 		return
 	}
-	sub := page.SubImage(image.Rect(
-		int(region.X), int(region.Y),
-		int(region.X)+int(region.Width), int(region.Y)+int(region.Height),
-	)).(*ebiten.Image)
+
+	var subRect image.Rectangle
+	if region.Rotated {
+		subRect = image.Rect(int(region.X), int(region.Y), int(region.X)+int(region.Height), int(region.Y)+int(region.Width))
+	} else {
+		subRect = image.Rect(int(region.X), int(region.Y), int(region.X)+int(region.Width), int(region.Y)+int(region.Height))
+	}
+	sub := page.SubImage(subRect).(*ebiten.Image)
 
 	var op ebiten.DrawImageOptions
+	if region.Rotated {
+		op.GeoM.Rotate(-1.5707963267948966) // -π/2
+		op.GeoM.Translate(0, float64(region.Width))
+	}
 	applyDrawOpts(&op, opts, float64(region.OffsetX), float64(region.OffsetY))
 	rt.image.DrawImage(sub, &op)
 }

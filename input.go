@@ -536,6 +536,11 @@ func (s *Scene) processPointer(pointerID int, wx, wy, sx, sy float64, pressed bo
 		target = s.hitTest(wx, wy)
 	}
 
+	// Clear stale hover reference if the node was disposed.
+	if ps.hoverNode != nil && ps.hoverNode.disposed {
+		ps.hoverNode = nil
+	}
+
 	// Fire hover enter/leave when the hovered node changes.
 	if target != ps.hoverNode {
 		if ps.hoverNode != nil {
