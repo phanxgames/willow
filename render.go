@@ -50,6 +50,10 @@ type RenderCommand struct {
 	// that is released after the frame. Such commands cannot be static-cached
 	// because the image pointer becomes stale on replay.
 	transientDirectImage bool
+
+	// emittingNodeID is set during CacheAsTree builds to track which Node
+	// emitted this command. Only populated when building under a cached ancestor.
+	emittingNodeID uint32
 }
 
 // identityTransform32 is the identity affine matrix as float32.
@@ -77,17 +81,19 @@ func (s *Scene) traverse(n *Node, treeOrder *int) {
 	// may have children whose world positions differ from the parent's AABB.
 	culled := s.cullActive && n.Renderable && shouldCull(n, viewWorld, s.cullBounds)
 
-	// Static command cache: replay cached commands or build the cache.
-	if n.staticCache != nil && !culled {
-		if n.staticCache.valid && !n.staticCache.blocked {
-			s.replayStaticCache(n, treeOrder)
+	// CacheAsTree: replay cached commands (hit) or build cache (miss).
+	if n.cacheTreeEnabled && !culled {
+		containerTransform32 := affine32(viewWorld)
+		containerAlpha := float32(n.worldAlpha)
+
+		if !n.cacheTreeDirty && len(n.cachedCommands) > 0 {
+			// Cache hit — delta remap and replay.
+			s.replayCacheAsTree(n, containerTransform32, containerAlpha, treeOrder)
 			return
 		}
-		if !n.staticCache.blocked {
-			s.buildStaticCache(n, treeOrder)
-			return
-		}
-		// blocked: fall through to normal traversal
+		// Cache miss — traverse normally, then capture.
+		s.buildCacheAsTree(n, containerTransform32, containerAlpha, treeOrder)
+		return
 	}
 
 	// Special path: nodes with masks, cache, or filters render their subtree
@@ -97,7 +103,11 @@ func (s *Scene) traverse(n *Node, treeOrder *int) {
 		return
 	}
 
+	// Track whether we're building under a CacheAsTree ancestor.
+	building := s.buildingCacheFor != nil
+
 	// Emit command for renderable leaf-type nodes
+	preCmdLen := len(s.commands)
 	if n.Renderable && !culled {
 		switch n.Type {
 		case NodeTypeSprite:
@@ -115,6 +125,9 @@ func (s *Scene) traverse(n *Node, treeOrder *int) {
 				cmd.directImage = n.customImage
 			} else {
 				cmd.TextureRegion = n.TextureRegion
+			}
+			if building {
+				cmd.emittingNodeID = n.ID
 			}
 			s.commands = append(s.commands, cmd)
 		case NodeTypeMesh:
@@ -169,6 +182,9 @@ func (s *Scene) traverse(n *Node, treeOrder *int) {
 			}
 			// NodeTypeContainer doesn't emit commands
 		}
+	}
+	if !building && len(s.commands) > preCmdLen {
+		s.commandsDirtyThisFrame = true
 	}
 
 	// Traverse children (ZIndex sorted if needed)
@@ -426,21 +442,15 @@ func (s *Scene) renderSpecialNode(n *Node, treeOrder *int) {
 	})
 }
 
-// --- Static subtree command caching ---
+// --- Subtree command caching (CacheAsTree) ---
 
-// staticCacheData stores cached render commands for a container's subtree.
-// Commands are stored with container-relative transforms so they can be
-// replayed with any new container worldTransform without re-traversing.
-type staticCacheData struct {
-	valid   bool
-	blocked bool        // true if subtree has uncacheable node types
-	cmds    []cachedCmd // commands with container-relative transforms
-}
-
-// cachedCmd is a render command with transform/color normalized relative
-// to the caching container's world transform and alpha.
+// cachedCmd is a render command with transform/color stored at cache time.
+// The two-tier source pointer supports animated tiles: nil = static (use
+// cmd.TextureRegion), non-nil = animated (read live TextureRegion from node).
 type cachedCmd struct {
-	cmd RenderCommand // Transform stores relative-to-container; Color normalized to container alpha=1
+	cmd          RenderCommand // Transform/Color stored as-is at cache time
+	source       *Node         // nil = static, non-nil = animated (read live TextureRegion)
+	sourceNodeID uint32        // emitting node's ID, for deferred animated registration lookup
 }
 
 // multiplyAffine32 multiplies two 2D affine matrices stored as [6]float32.
@@ -474,17 +484,71 @@ func invertAffine32(m [6]float32) [6]float32 {
 	}
 }
 
-// buildStaticCache traverses the container's subtree normally, captures
-// the emitted commands, and normalizes them relative to the container's
-// current view-adjusted transform and alpha.
-func (s *Scene) buildStaticCache(n *Node, treeOrder *int) {
+// replayCacheAsTree replays cached commands with delta remap for transform
+// and alpha changes. Animated tiles read live TextureRegion from source node.
+func (s *Scene) replayCacheAsTree(n *Node, containerTransform32 [6]float32, containerAlpha float32, treeOrder *int) {
+	transformChanged := containerTransform32 != n.cachedParentTransform
+	alphaChanged := containerAlpha != n.cachedParentAlpha
+
+	var delta [6]float32
+	if transformChanged {
+		inv := invertAffine32(n.cachedParentTransform)
+		delta = multiplyAffine32(containerTransform32, inv)
+	}
+	var alphaRatio float32 = 1.0
+	if alphaChanged && n.cachedParentAlpha > 1e-6 {
+		alphaRatio = containerAlpha / n.cachedParentAlpha
+	}
+
+	for i := range n.cachedCommands {
+		src := &n.cachedCommands[i]
+		cmd := src.cmd // copy from cache
+		if transformChanged {
+			cmd.Transform = multiplyAffine32(delta, cmd.Transform)
+		}
+		if alphaChanged {
+			cmd.Color.R *= alphaRatio
+			cmd.Color.G *= alphaRatio
+			cmd.Color.B *= alphaRatio
+			cmd.Color.A *= alphaRatio
+		}
+		// Two-tier texture: nil source = static, non-nil = animated
+		if src.source != nil {
+			cmd.TextureRegion = src.source.TextureRegion
+		}
+		*treeOrder++
+		cmd.treeOrder = *treeOrder
+		s.commands = append(s.commands, cmd)
+	}
+
+	// Update snapshots for next frame's delta.
+	if transformChanged {
+		n.cachedParentTransform = containerTransform32
+	}
+	if alphaChanged {
+		n.cachedParentAlpha = containerAlpha
+	}
+}
+
+// buildCacheAsTree traverses the container's subtree normally, captures
+// the emitted commands, and stores them for future replay.
+func (s *Scene) buildCacheAsTree(n *Node, containerTransform32 [6]float32, containerAlpha float32, treeOrder *int) {
 	startIdx := len(s.commands)
+	s.commandsDirtyThisFrame = true
+
+	// Set flag so traverse tags emitted commands with emittingNodeID.
+	prevBuilding := s.buildingCacheFor
+	s.buildingCacheFor = n
 
 	// Emit the container's own command if renderable.
 	viewWorld := multiplyAffine(s.viewTransform, n.worldTransform)
 	culled := s.cullActive && n.Renderable && shouldCull(n, viewWorld, s.cullBounds)
 	if n.Renderable && !culled {
 		s.emitNodeCommandInline(n, treeOrder)
+		// Tag the just-emitted command(s) with the node ID.
+		for i := startIdx; i < len(s.commands); i++ {
+			s.commands[i].emittingNodeID = n.ID
+		}
 	}
 
 	// Traverse children normally.
@@ -501,9 +565,11 @@ func (s *Scene) buildStaticCache(n *Node, treeOrder *int) {
 		}
 	}
 
-	// Capture emitted commands and check for uncacheable types.
+	// Restore building flag.
+	s.buildingCacheFor = prevBuilding
+
+	// Capture emitted commands. Check for uncacheable types.
 	newCmds := s.commands[startIdx:]
-	sc := n.staticCache
 	blocked := false
 	for i := range newCmds {
 		cmd := &newCmds[i]
@@ -514,62 +580,31 @@ func (s *Scene) buildStaticCache(n *Node, treeOrder *int) {
 	}
 
 	if blocked {
-		sc.blocked = true
-		sc.valid = false
+		// Can't cache — disable and fall through. Commands are already emitted.
+		n.cacheTreeDirty = true
 		return
 	}
 
-	// Compute inverse of container's view-adjusted transform for normalization.
-	containerTransform32 := affine32(viewWorld)
-	invContainer := invertAffine32(containerTransform32)
-	containerAlpha := float32(n.worldAlpha)
-
-	// Normalize and store.
-	if cap(sc.cmds) < len(newCmds) {
-		sc.cmds = make([]cachedCmd, len(newCmds))
+	// Store in cachedCommands.
+	if cap(n.cachedCommands) < len(newCmds) {
+		n.cachedCommands = make([]cachedCmd, len(newCmds))
 	}
-	sc.cmds = sc.cmds[:len(newCmds)]
+	n.cachedCommands = n.cachedCommands[:len(newCmds)]
 
 	for i := range newCmds {
-		cc := &sc.cmds[i]
-		cc.cmd = newCmds[i]
-		// Compute relative transform: inv(container) * cmd.Transform
-		cc.cmd.Transform = multiplyAffine32(invContainer, newCmds[i].Transform)
-		// Normalize color by container alpha.
-		if containerAlpha > 1e-6 {
-			scale := 1.0 / containerAlpha
-			cc.cmd.Color.R *= scale
-			cc.cmd.Color.G *= scale
-			cc.cmd.Color.B *= scale
-			cc.cmd.Color.A *= scale
+		n.cachedCommands[i] = cachedCmd{
+			cmd:          newCmds[i],
+			source:       nil, // static by default (two-tier)
+			sourceNodeID: newCmds[i].emittingNodeID,
 		}
 	}
 
-	sc.valid = true
+	n.cachedParentTransform = containerTransform32
+	n.cachedParentAlpha = containerAlpha
+	n.cacheTreeDirty = false
 }
 
-// replayStaticCache emits cached commands with rebased transforms and alpha.
-func (s *Scene) replayStaticCache(n *Node, treeOrder *int) {
-	sc := n.staticCache
-	viewContainerWorld := multiplyAffine(s.viewTransform, n.worldTransform)
-	containerTransform32 := affine32(viewContainerWorld)
-	alpha32 := float32(n.worldAlpha)
-
-	for i := range sc.cmds {
-		*treeOrder++
-		src := &sc.cmds[i].cmd
-		cmd := *src
-		cmd.Transform = multiplyAffine32(containerTransform32, src.Transform)
-		cmd.Color.R = src.Color.R * alpha32
-		cmd.Color.G = src.Color.G * alpha32
-		cmd.Color.B = src.Color.B * alpha32
-		cmd.Color.A = src.Color.A * alpha32
-		cmd.treeOrder = *treeOrder
-		s.commands = append(s.commands, cmd)
-	}
-}
-
-// emitNodeCommandInline emits a command for the node itself (used by buildStaticCache
+// emitNodeCommandInline emits a command for the node itself (used by buildCacheAsTree
 // when the cached container is also renderable).
 func (s *Scene) emitNodeCommandInline(n *Node, treeOrder *int) {
 	viewWorld := multiplyAffine(s.viewTransform, n.worldTransform)

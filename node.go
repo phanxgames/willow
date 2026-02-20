@@ -4,6 +4,18 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
+// CacheTreeMode controls how a SetCacheAsTree node detects stale caches.
+type CacheTreeMode uint8
+
+const (
+	// CacheTreeManual requires the user to call InvalidateCacheTree() when
+	// the subtree changes. Zero overhead on setters. Best for large tilemaps.
+	CacheTreeManual CacheTreeMode = iota + 1
+	// CacheTreeAuto (the default) auto-invalidates the cache when setters on
+	// descendant nodes are called. Small per-setter overhead. Always correct.
+	CacheTreeAuto
+)
+
 // --- Placeholder types (replaced by later phases) ---
 
 // Font and TextBlock are defined in text.go (Phase 07).
@@ -131,8 +143,16 @@ type Node struct {
 
 	// ---- HOT: render command fields (cache lines 2-3) ----
 
-	staticCache *staticCacheData  // checked early in traverse
-	customImage *ebiten.Image     // user-provided offscreen canvas (RenderTexture)
+	customImage *ebiten.Image // user-provided offscreen canvas (RenderTexture)
+
+	// Subtree command cache (Phase 15): stores commands in local space,
+	// replays with delta remap on cache hit.
+	cacheTreeEnabled      bool
+	cacheTreeMode         CacheTreeMode
+	cacheTreeDirty        bool
+	cachedCommands        []cachedCmd
+	cachedParentTransform [6]float32 // snapshot of container's view-world transform at cache time
+	cachedParentAlpha     float32    // snapshot of container's worldAlpha at cache time
 	// GlobalOrder is a secondary sort key within the same RenderLayer.
 	// Set it to override the default tree-order sorting.
 	GlobalOrder int
@@ -358,11 +378,11 @@ func (n *Node) SetBlendMode(b BlendMode) {
 	invalidateAncestorCache(n)
 }
 
-// SetVisible sets the node's visibility and invalidates ancestor static caches.
+// SetVisible sets the node's visibility and invalidates ancestor caches.
 func (n *Node) SetVisible(v bool) {
 	n.Visible = v
-	if n.staticCache != nil {
-		n.staticCache.valid = false
+	if n.cacheTreeEnabled {
+		n.cacheTreeDirty = true
 	}
 	invalidateAncestorCache(n)
 }
@@ -373,10 +393,20 @@ func (n *Node) SetRenderable(r bool) {
 	invalidateAncestorCache(n)
 }
 
-// SetTextureRegion sets the node's texture region and invalidates ancestor static caches.
+// SetTextureRegion sets the node's texture region and invalidates ancestor caches.
+// If the atlas page is unchanged (e.g. animated tile UV swap), the CacheAsTree
+// cache is NOT invalidated — instead the node is registered as animated so replay
+// reads the live TextureRegion. Page changes always invalidate.
 func (n *Node) SetTextureRegion(r TextureRegion) {
+	pageChanged := n.TextureRegion.Page != r.Page
 	n.TextureRegion = r
-	invalidateAncestorCache(n)
+	if pageChanged {
+		invalidateAncestorCache(n)
+		return
+	}
+	// Same page, different UVs → register this node as animated in its
+	// cached ancestor so replay reads the live TextureRegion.
+	n.registerAnimatedInCache()
 }
 
 // SetRenderLayer sets the node's render layer and invalidates ancestor static caches.
@@ -414,8 +444,8 @@ func (n *Node) AddChild(child *Node) {
 	n.children = append(n.children, child)
 	n.childrenSorted = false
 	markSubtreeDirty(child)
-	if n.staticCache != nil {
-		n.staticCache.valid = false
+	if n.cacheTreeEnabled {
+		n.cacheTreeDirty = true
 	}
 	invalidateAncestorCache(n)
 	if globalDebug {
@@ -449,8 +479,8 @@ func (n *Node) AddChildAt(child *Node, index int) {
 	n.children[index] = child
 	n.childrenSorted = false
 	markSubtreeDirty(child)
-	if n.staticCache != nil {
-		n.staticCache.valid = false
+	if n.cacheTreeEnabled {
+		n.cacheTreeDirty = true
 	}
 	invalidateAncestorCache(n)
 	if globalDebug {
@@ -473,8 +503,8 @@ func (n *Node) RemoveChild(child *Node) {
 	child.Parent = nil
 	n.childrenSorted = false
 	markSubtreeDirty(child)
-	if n.staticCache != nil {
-		n.staticCache.valid = false
+	if n.cacheTreeEnabled {
+		n.cacheTreeDirty = true
 	}
 	invalidateAncestorCache(n)
 }
@@ -495,8 +525,8 @@ func (n *Node) RemoveChildAt(index int) *Node {
 	child.Parent = nil
 	n.childrenSorted = false
 	markSubtreeDirty(child)
-	if n.staticCache != nil {
-		n.staticCache.valid = false
+	if n.cacheTreeEnabled {
+		n.cacheTreeDirty = true
 	}
 	invalidateAncestorCache(n)
 	return child
@@ -520,8 +550,8 @@ func (n *Node) RemoveChildren() {
 	}
 	n.children = n.children[:0]
 	n.childrenSorted = true
-	if n.staticCache != nil {
-		n.staticCache.valid = false
+	if n.cacheTreeEnabled {
+		n.cacheTreeDirty = true
 	}
 	invalidateAncestorCache(n)
 }
@@ -585,43 +615,82 @@ func (n *Node) SetZIndex(z int) {
 	invalidateAncestorCache(n)
 }
 
-// --- Static subtree command cache API ---
+// --- Subtree command cache API ---
 
-// SetStaticCache enables or disables command caching on this container's subtree.
-// When enabled, render commands are captured on the first frame and replayed
-// on subsequent frames, skipping the recursive tree walk entirely.
-// Call InvalidateStaticCache when the subtree content changes.
-func (n *Node) SetStaticCache(enabled bool) {
+// SetCacheAsTree enables or disables subtree command caching.
+// When enabled, traverse skips this node's subtree and replays cached commands.
+// Camera movement is handled automatically via delta remapping.
+//
+// Mode is optional and defaults to CacheTreeAuto (safe, always correct).
+//
+// Modes:
+//
+//	CacheTreeAuto   — (default) setters on descendant nodes auto-invalidate
+//	                  the cache. Small per-setter overhead. Always correct.
+//	CacheTreeManual — user calls InvalidateCacheTree() when subtree changes.
+//	                  Zero overhead on setters. Best for large tilemaps where
+//	                  the developer knows exactly when tiles change.
+func (n *Node) SetCacheAsTree(enabled bool, mode ...CacheTreeMode) {
 	if enabled {
-		if n.staticCache == nil {
-			n.staticCache = &staticCacheData{}
+		n.cacheTreeEnabled = true
+		if len(mode) > 0 {
+			n.cacheTreeMode = mode[0]
+		} else {
+			n.cacheTreeMode = CacheTreeAuto
 		}
-		n.staticCache.valid = false
-		n.staticCache.blocked = false
+		n.cacheTreeDirty = true
 	} else {
-		n.staticCache = nil
+		n.cacheTreeEnabled = false
+		n.cacheTreeMode = 0
+		n.cacheTreeDirty = false
+		n.cachedCommands = nil
 	}
 }
 
-// InvalidateStaticCache forces the static command cache to rebuild on the next frame.
-// No-op if static caching is not enabled.
-func (n *Node) InvalidateStaticCache() {
-	if n.staticCache != nil {
-		n.staticCache.valid = false
+// InvalidateCacheTree marks the cache as stale. Next Draw() re-traverses.
+// Works with both Auto and Manual modes.
+func (n *Node) InvalidateCacheTree() {
+	if n.cacheTreeEnabled {
+		n.cacheTreeDirty = true
 	}
 }
 
-// IsStaticCacheValid reports whether the static cache has valid cached commands.
-func (n *Node) IsStaticCacheValid() bool {
-	return n.staticCache != nil && n.staticCache.valid
+// IsCacheAsTreeEnabled reports whether subtree command caching is enabled.
+func (n *Node) IsCacheAsTreeEnabled() bool {
+	return n.cacheTreeEnabled
+}
+
+// registerAnimatedInCache walks up to the nearest CacheAsTree ancestor and
+// promotes this node's cachedCmd from static to animated (source = n) so
+// replay reads the live TextureRegion. O(N) scan, runs once per tile that
+// starts animating — not per frame.
+func (n *Node) registerAnimatedInCache() {
+	for p := n.Parent; p != nil; p = p.Parent {
+		if !p.cacheTreeEnabled {
+			continue
+		}
+		if len(p.cachedCommands) == 0 {
+			return // cache not built yet; source will be set on first build
+		}
+		for i := range p.cachedCommands {
+			if p.cachedCommands[i].source == n || p.cachedCommands[i].sourceNodeID == n.ID {
+				p.cachedCommands[i].source = n
+				return
+			}
+		}
+		return
+	}
 }
 
 // invalidateAncestorCache walks up the tree from n to find the nearest
-// ancestor with a static cache and marks it invalid.
+// CacheAsTree ancestor and marks it dirty (auto mode only).
+// Manual mode stops bubbling — user manages invalidation.
 func invalidateAncestorCache(n *Node) {
 	for p := n.Parent; p != nil; p = p.Parent {
-		if p.staticCache != nil {
-			p.staticCache.valid = false
+		if p.cacheTreeEnabled {
+			if p.cacheTreeMode == CacheTreeAuto {
+				p.cacheTreeDirty = true
+			}
 			return
 		}
 	}
@@ -658,7 +727,9 @@ func (n *Node) dispose() {
 	}
 	n.cacheDirty = false
 	n.mask = nil
-	n.staticCache = nil
+	n.cacheTreeEnabled = false
+	n.cacheTreeDirty = false
+	n.cachedCommands = nil
 	n.customImage = nil
 	n.MeshImage = nil
 	n.transformedVerts = nil

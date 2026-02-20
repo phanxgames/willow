@@ -87,6 +87,10 @@ type Scene struct {
 	cullActive    bool       // whether culling is active for the current camera
 	viewTransform [6]float64 // current camera view matrix for world-space particles
 
+	// CacheAsTree state (Phase 15)
+	buildingCacheFor       *Node // non-nil when traversing under a cache-miss node
+	commandsDirtyThisFrame bool  // true when any cache miss or uncached nodes emitted
+
 	// Render target pool and offscreen buffers (Phase 09)
 	rtPool        renderTexturePool
 	rtDeferred    []*ebiten.Image
@@ -285,6 +289,7 @@ func (s *Scene) drawWithCamera(target *ebiten.Image, cam *Camera) {
 	}
 
 	s.commands = s.commands[:0]
+	s.commandsDirtyThisFrame = false
 
 	if cam != nil {
 		s.viewTransform = cam.computeViewMatrix()
@@ -312,7 +317,9 @@ func (s *Scene) drawWithCamera(target *ebiten.Image, cam *Camera) {
 		t0 = time.Now()
 	}
 
-	s.mergeSort()
+	if s.commandsDirtyThisFrame {
+		s.mergeSort()
+	}
 
 	if s.debug {
 		stats.sortTime = time.Since(t0)

@@ -131,6 +131,7 @@ Full API documentation is available on [pkg.go.dev](https://pkg.go.dev/github.co
 - **Text rendering** - Bitmap fonts (BMFont `.fnt`) for pixel-perfect rendering, TTF fallback via Ebitengine `text/v2`. Alignment, word wrapping, line height overrides, and outlines.
 - **Particle system** - CPU-simulated with preallocated pools. Configurable emit rate, lifetime, speed, gravity, and scale/alpha/color interpolation. Optional world-space emission.
 - **Mesh support** - `DrawTriangles` with preallocated vertex and index buffers. High-level helpers for rope meshes, filled polygons, and deformable grids.
+- **Subtree command caching** - `SetCacheAsTree` caches all render commands for a container's subtree and replays them with delta transform remapping. Camera panning, parent movement, and alpha changes never invalidate the cache. Animated tiles (same-page UV swaps) are handled automatically via a two-tier source pointer - no invalidation, no API overhead. Manual and auto-invalidation modes. Includes sort-skip optimization when the entire scene is cache hits.
 - **Filters and effects** - Composable filter chains via Kage shaders. Built-in: color matrix, blur, outline, pixel-perfect outline, pixel-perfect inline, palette swap. Render-target masking and `CacheAsTexture`.
 - **Lighting** - Dedicated lighting layer using erase-blend render targets with automatic compositing.
 - **Animation** - Tweening via [gween](https://github.com/tanema/gween) with 45+ easing functions. Convenience wrappers for position, scale, rotation, alpha, and color. Auto-stops on node disposal.
@@ -149,6 +150,17 @@ Willow is designed around a zero-allocation-per-frame contract on the hot path:
 - Typed callback slices - no `interface{}` boxing in event dispatch
 - Render-texture pooling by power-of-two size buckets
 - Value-type `DrawImageOptions` declared once, reused per iteration
+
+**Subtree command caching** (`SetCacheAsTree`) avoids re-traversing static subtrees entirely. Commands are stored at cache time and replayed with a single matrix multiply per command. Camera movement, parent transforms, and alpha changes are handled via delta remapping — the cache is never invalidated for movement.
+
+| Scenario (10K sprites) | Time | vs uncached |
+|---|---|---|
+| Manual cache, camera scrolling | ~39 &mu;s | ~125x faster |
+| Manual cache, 100 animated tile UV swaps | ~1.97 ms | ~2.5x faster |
+| Auto cache, 1% of children moving | ~4.0 ms | ~1.2x faster |
+| No cache (baseline) | ~4.9 ms | — |
+
+The cache is per-container: one child moving invalidates the whole container (auto mode). Separate static content (tilemaps, UI panels) from dynamic content (players, projectiles) into different containers for best results.
 
 Benchmark suite included: `go test -bench . -benchmem`
 

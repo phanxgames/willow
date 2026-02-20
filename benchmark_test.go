@@ -170,15 +170,14 @@ func BenchmarkDraw_10000Sprites_AlphaOnly_Coalesced(b *testing.B) {
 	}
 }
 
-// --- Static Cache Benchmarks ---
+// --- CacheAsTree Benchmarks ---
 
-// setupStaticCacheBenchScene creates a scene with a single container (static cached)
-// holding n sprites for benchmark use.
-func setupStaticCacheBenchScene(n int) *Scene {
+// setupCacheAsTreeBenchScene creates a scene with a single container
+// (CacheAsTree enabled) holding n sprites.
+func setupCacheAsTreeBenchScene(n int, mode CacheTreeMode) *Scene {
 	s := NewScene()
 	root := s.Root()
 	container := NewContainer("cached")
-	container.SetStaticCache(true)
 	root.AddChild(container)
 	region := TextureRegion{
 		Page:      magentaPlaceholderPage,
@@ -193,15 +192,14 @@ func setupStaticCacheBenchScene(n int) *Scene {
 		sp.Y = float64(i/100) * 40
 		container.AddChild(sp)
 	}
+	container.SetCacheAsTree(true, mode)
 	return s
 }
 
-func BenchmarkDraw_10000Sprites_StaticCache_Replay(b *testing.B) {
-	s := setupStaticCacheBenchScene(10000)
+func BenchmarkDraw_CacheAsTree_Manual_Static(b *testing.B) {
+	s := setupCacheAsTreeBenchScene(10000, CacheTreeManual)
 	screen := ebiten.NewImage(1280, 720)
-
-	// Warm up: first draw builds the cache.
-	s.Draw(screen)
+	s.Draw(screen) // warmup: builds cache
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -210,34 +208,89 @@ func BenchmarkDraw_10000Sprites_StaticCache_Replay(b *testing.B) {
 	}
 }
 
-func BenchmarkDraw_10000Sprites_StaticCache_Build(b *testing.B) {
-	s := setupStaticCacheBenchScene(10000)
+func BenchmarkDraw_CacheAsTree_Manual_CameraScroll(b *testing.B) {
+	s := setupCacheAsTreeBenchScene(10000, CacheTreeManual)
+	cam := s.NewCamera(Rect{X: 0, Y: 0, Width: 1280, Height: 720})
 	screen := ebiten.NewImage(1280, 720)
+	s.Draw(screen) // warmup
 
-	// Warm up to populate sortBuf etc.
-	s.Draw(screen)
-
-	container := s.Root().ChildAt(0)
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		container.InvalidateStaticCache()
+		cam.X = float64(i % 500)
+		cam.Y = float64(i % 300)
 		s.Draw(screen)
 	}
 }
 
-func BenchmarkDraw_10000Sprites_StaticCache_ContainerMove(b *testing.B) {
-	s := setupStaticCacheBenchScene(10000)
+func BenchmarkDraw_CacheAsTree_Manual_TextureSwap(b *testing.B) {
+	s := setupCacheAsTreeBenchScene(10000, CacheTreeManual)
 	screen := ebiten.NewImage(1280, 720)
+	s.Draw(screen) // warmup: builds cache
 
-	// Warm up: first draw builds the cache.
-	s.Draw(screen)
+	// Pick 100 tiles to animate (same page, different UVs).
+	container := s.Root().ChildAt(0)
+	animated := container.Children()[:100]
+	frames := [2]TextureRegion{
+		{Page: magentaPlaceholderPage, X: 0, Y: 0, Width: 32, Height: 32, OriginalW: 32, OriginalH: 32},
+		{Page: magentaPlaceholderPage, X: 32, Y: 0, Width: 32, Height: 32, OriginalW: 32, OriginalH: 32},
+	}
+	// First swap to register as animated.
+	for _, tile := range animated {
+		tile.SetTextureRegion(frames[1])
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		frame := frames[i%2]
+		for _, tile := range animated {
+			tile.SetTextureRegion(frame)
+		}
+		s.Draw(screen)
+	}
+}
+
+func BenchmarkDraw_CacheAsTree_Auto_1PctMoving(b *testing.B) {
+	s := setupCacheAsTreeBenchScene(10000, CacheTreeAuto)
+	screen := ebiten.NewImage(1280, 720)
+	s.Draw(screen) // warmup
+
+	// 1% of sprites move each frame (triggers auto-invalidation).
+	container := s.Root().ChildAt(0)
+	movers := container.Children()[:100]
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		for _, m := range movers {
+			m.SetPosition(m.X+1, m.Y)
+		}
+		s.Draw(screen)
+	}
+}
+
+func BenchmarkDraw_CacheAsTree_None_Baseline(b *testing.B) {
+	s := setupBenchScene(10000)
+	screen := ebiten.NewImage(1280, 720)
+	s.Draw(screen) // warmup
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		s.Draw(screen)
+	}
+}
+
+func BenchmarkDraw_CacheAsTree_Manual_ContainerMove(b *testing.B) {
+	s := setupCacheAsTreeBenchScene(10000, CacheTreeManual)
+	screen := ebiten.NewImage(1280, 720)
+	s.Draw(screen) // warmup
 
 	container := s.Root().ChildAt(0)
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		// Moving the container itself does NOT invalidate the static cache.
 		container.X = float64(i % 100)
 		container.transformDirty = true
 		s.Draw(screen)

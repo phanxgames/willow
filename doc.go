@@ -269,6 +269,98 @@
 // entity-component system. A [Donburi] adapter ships in the willow/ecs
 // submodule.
 //
+// # Subtree command caching
+//
+// [Node.SetCacheAsTree] caches all render commands emitted by a container's
+// subtree. On subsequent frames the cached commands are replayed with a
+// delta transform remap instead of walking the tree — the CPU cost drops
+// from O(N) traversal to O(N) memcpy with a matrix multiply per command.
+//
+// Camera panning, parent movement, and parent alpha changes are handled
+// automatically via delta remapping and never invalidate the cache.
+//
+// Two modes are available:
+//
+//   - [CacheTreeAuto] (default) — setters on descendant nodes
+//     auto-invalidate the cache. Always correct, small per-setter overhead.
+//   - [CacheTreeManual] — only [Node.InvalidateCacheTree] triggers a
+//     rebuild. Zero setter overhead. Best for large tilemaps where the
+//     developer knows exactly when tiles change.
+//
+// Basic usage:
+//
+//	tilemap := willow.NewContainer("tilemap")
+//	for _, tile := range tiles {
+//	    tilemap.AddChild(tile)
+//	}
+//	tilemap.SetCacheAsTree(true) // auto mode (default)
+//
+// For maximum performance with large tilemaps:
+//
+//	tilemap.SetCacheAsTree(true, willow.CacheTreeManual)
+//	// ... later, when tiles change:
+//	tilemap.InvalidateCacheTree()
+//
+// # Animated tiles (texture swaps)
+//
+// Animated tiles (water, lava, torches) that swap UV coordinates on the
+// same atlas page work without cache invalidation. The first
+// [Node.SetTextureRegion] call with a same-page region automatically
+// registers the node as "animated" — subsequent replays read the live
+// TextureRegion from the node instead of the cached snapshot:
+//
+//	// waterTile is a child of a cached tilemap container.
+//	// This does NOT invalidate the cache:
+//	waterTile.SetTextureRegion(waterFrames[frame])
+//
+// Changing to a different atlas page does invalidate the cache, since
+// page changes affect batch keys. All animation frames for a tile should
+// be on the same atlas page (TexturePacker typically does this
+// automatically for related frames).
+//
+// # When to use SetCacheAsTree
+//
+// The cache stores commands per-container. Any mutation to a child
+// invalidates the entire container's cache (in auto mode) or produces
+// stale output (in manual mode until you call InvalidateCacheTree).
+//
+// This makes it ideal for large, mostly-static subtrees:
+//
+//   - Tilemaps (thousands of tiles, camera scrolling every frame)
+//   - Static UI panels (dozens of widgets, occasionally updated)
+//   - Background decoration layers
+//
+// It is NOT useful for containers where children move individually every
+// frame — one child's [Node.SetPosition] dirties the whole container,
+// so you pay rebuild cost plus cache management overhead.
+//
+// The recommended pattern is to separate static and dynamic content:
+//
+//	// Cached: 10K tiles, camera scrolls for free
+//	tilemap := willow.NewContainer("tilemap")
+//	tilemap.SetCacheAsTree(true, willow.CacheTreeManual)
+//
+//	// NOT cached: entities move every frame
+//	entities := willow.NewContainer("entities")
+//
+//	scene.Root().AddChild(tilemap)
+//	scene.Root().AddChild(entities)
+//
+// Mesh nodes and particle emitters inside a cached subtree block
+// caching — the cache stays dirty and falls back to normal traversal.
+// Move particles and meshes to a separate uncached container.
+//
+// # SetCacheAsTree vs SetCacheAsTexture
+//
+// Willow has two user-facing caching mechanisms:
+//
+//   - [Node.SetCacheAsTree] skips CPU traversal. Output is N render
+//     commands replayed from cache. Pixel-perfect at any zoom. Animated
+//     tiles work for free.
+//   - [Node.SetCacheAsTexture] skips GPU draw calls. Output is a single
+//     texture. Blurs if zoomed past cached resolution. Best for
+//     filtered/masked nodes and complex visual effects.
+//
 // # Performance
 //
 // Willow targets zero heap allocations per frame on the hot path. Render

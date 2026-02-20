@@ -4,11 +4,14 @@ import (
 	"math"
 	"sort"
 	"testing"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // helper to build a scene and run traverse without Draw (no ebiten.Image needed)
 func traverseScene(s *Scene) {
 	s.commands = s.commands[:0]
+	s.commandsDirtyThisFrame = false
 	// Compute world transforms first (mirrors Scene.Update), then traverse
 	// read-only with identity view.
 	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
@@ -319,6 +322,332 @@ func TestMergeSortSingleElement(t *testing.T) {
 	s.mergeSort() // should not panic
 	if s.commands[0].treeOrder != 1 {
 		t.Error("single element should remain unchanged")
+	}
+}
+
+// --- CacheAsTree tests ---
+
+// traverseSceneWithCamera runs traverse with a camera's view transform.
+func traverseSceneWithCamera(s *Scene, cam *Camera) {
+	s.commands = s.commands[:0]
+	s.commandsDirtyThisFrame = false
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
+	if cam != nil {
+		s.viewTransform = cam.computeViewMatrix()
+	} else {
+		s.viewTransform = identityTransform
+	}
+	treeOrder := 0
+	s.traverse(s.root, &treeOrder)
+}
+
+func TestCacheAsTree_MatchesUncached(t *testing.T) {
+	// Build identical scenes — one cached, one not.
+	build := func(cached bool) *Scene {
+		s := NewScene()
+		container := NewContainer("c")
+		for i := 0; i < 10; i++ {
+			sp := NewSprite("sp", TextureRegion{Width: 32, Height: 32, OriginalW: 32, OriginalH: 32})
+			sp.X = float64(i * 40)
+			sp.Alpha = 0.8
+			container.AddChild(sp)
+		}
+		s.Root().AddChild(container)
+		if cached {
+			container.SetCacheAsTree(true, CacheTreeManual)
+		}
+		return s
+	}
+
+	uncached := build(false)
+	cached := build(true)
+
+	// First traverse builds the cache.
+	traverseScene(uncached)
+	traverseScene(cached)
+
+	// Second traverse replays from cache.
+	traverseScene(cached)
+
+	if len(cached.commands) != len(uncached.commands) {
+		t.Fatalf("command count: cached=%d, uncached=%d", len(cached.commands), len(uncached.commands))
+	}
+	for i := range cached.commands {
+		a, b := cached.commands[i], uncached.commands[i]
+		if a.Transform != b.Transform {
+			t.Errorf("cmd[%d] transform mismatch: %v vs %v", i, a.Transform, b.Transform)
+		}
+		if a.Color != b.Color {
+			t.Errorf("cmd[%d] color mismatch: %v vs %v", i, a.Color, b.Color)
+		}
+		if a.TextureRegion != b.TextureRegion {
+			t.Errorf("cmd[%d] region mismatch: %v vs %v", i, a.TextureRegion, b.TextureRegion)
+		}
+	}
+}
+
+func TestCacheAsTree_ManualModePersists(t *testing.T) {
+	s := NewScene()
+	container := NewContainer("c")
+	sp := NewSprite("sp", TextureRegion{Width: 32, Height: 32, OriginalW: 32, OriginalH: 32})
+	container.AddChild(sp)
+	s.Root().AddChild(container)
+	container.SetCacheAsTree(true, CacheTreeManual)
+
+	traverseScene(s) // build
+	traverseScene(s) // replay
+
+	// Modify a child via setter — manual mode should NOT auto-invalidate.
+	sp.SetPosition(100, 100)
+
+	traverseScene(s)
+	// Cache should still be valid (manual mode ignores setter bubbling).
+	// The command should have the OLD transform (from cache).
+	if len(s.commands) != 1 {
+		t.Fatalf("expected 1 command, got %d", len(s.commands))
+	}
+	// Old position was X=0, so transform tx should be 0.
+	if s.commands[0].Transform[4] != 0 {
+		t.Errorf("manual mode: expected cached transform tx=0, got %v", s.commands[0].Transform[4])
+	}
+
+	// Now manually invalidate.
+	container.InvalidateCacheTree()
+	traverseScene(s)
+	// Should have new position.
+	if s.commands[0].Transform[4] != 100 {
+		t.Errorf("after invalidate: expected tx=100, got %v", s.commands[0].Transform[4])
+	}
+}
+
+func TestCacheAsTree_AutoModeBubblesOnSetter(t *testing.T) {
+	s := NewScene()
+	container := NewContainer("c")
+	sp := NewSprite("sp", TextureRegion{Width: 32, Height: 32, OriginalW: 32, OriginalH: 32})
+	container.AddChild(sp)
+	s.Root().AddChild(container)
+	container.SetCacheAsTree(true, CacheTreeAuto)
+
+	traverseScene(s) // build
+	traverseScene(s) // replay (cache hit)
+
+	// Modify a child — auto mode should invalidate.
+	sp.SetPosition(50, 50)
+	traverseScene(s) // rebuild
+	if len(s.commands) != 1 {
+		t.Fatalf("expected 1 command, got %d", len(s.commands))
+	}
+	if s.commands[0].Transform[4] != 50 {
+		t.Errorf("auto mode: expected tx=50 after setter, got %v", s.commands[0].Transform[4])
+	}
+}
+
+func TestCacheAsTree_DeltaRemap_CameraPan(t *testing.T) {
+	s := NewScene()
+	container := NewContainer("c")
+	sp := NewSprite("sp", TextureRegion{Width: 32, Height: 32, OriginalW: 32, OriginalH: 32})
+	sp.X = 100
+	container.AddChild(sp)
+	s.Root().AddChild(container)
+	container.SetCacheAsTree(true, CacheTreeManual)
+
+	// Build a reference uncached scene.
+	ref := NewScene()
+	refContainer := NewContainer("c")
+	refSp := NewSprite("sp", TextureRegion{Width: 32, Height: 32, OriginalW: 32, OriginalH: 32})
+	refSp.X = 100
+	refContainer.AddChild(refSp)
+	ref.Root().AddChild(refContainer)
+
+	// First traverse to build cache.
+	traverseScene(s)
+
+	// Apply a view transform (camera pan).
+	s.viewTransform = [6]float64{1, 0, 0, 1, -50, -30}
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
+	s.commands = s.commands[:0]
+	s.commandsDirtyThisFrame = false
+	treeOrder := 0
+	s.traverse(s.root, &treeOrder)
+
+	ref.viewTransform = [6]float64{1, 0, 0, 1, -50, -30}
+	updateWorldTransform(ref.root, identityTransform, 1.0, false, false)
+	ref.commands = ref.commands[:0]
+	refTreeOrder := 0
+	ref.traverse(ref.root, &refTreeOrder)
+
+	if len(s.commands) != len(ref.commands) {
+		t.Fatalf("command count: cached=%d, ref=%d", len(s.commands), len(ref.commands))
+	}
+	for i := range s.commands {
+		a, b := s.commands[i], ref.commands[i]
+		for j := 0; j < 6; j++ {
+			diff := a.Transform[j] - b.Transform[j]
+			if diff > 0.01 || diff < -0.01 {
+				t.Errorf("cmd[%d] transform[%d]: cached=%v, ref=%v", i, j, a.Transform[j], b.Transform[j])
+			}
+		}
+	}
+}
+
+func TestCacheAsTree_AlphaRemap(t *testing.T) {
+	s := NewScene()
+	parent := NewContainer("parent")
+	parent.Alpha = 0.5
+	container := NewContainer("c")
+	sp := NewSprite("sp", TextureRegion{Width: 32, Height: 32, OriginalW: 32, OriginalH: 32})
+	container.AddChild(sp)
+	parent.AddChild(container)
+	s.Root().AddChild(parent)
+	container.SetCacheAsTree(true, CacheTreeManual)
+
+	traverseScene(s) // build
+	// Parent alpha is 0.5, sprite alpha is 1.0, so worldAlpha = 0.5
+	if len(s.commands) != 1 {
+		t.Fatalf("expected 1 command, got %d", len(s.commands))
+	}
+	if math.Abs(float64(s.commands[0].Color.A)-0.5) > 0.01 {
+		t.Errorf("initial alpha: expected ~0.5, got %v", s.commands[0].Color.A)
+	}
+
+	// Change parent alpha.
+	parent.Alpha = 0.8
+	parent.alphaDirty = true
+	traverseScene(s) // replay with alpha remap
+	// New worldAlpha = 0.8 * 1.0 = 0.8
+	if math.Abs(float64(s.commands[0].Color.A)-0.8) > 0.01 {
+		t.Errorf("remapped alpha: expected ~0.8, got %v", s.commands[0].Color.A)
+	}
+}
+
+func TestCacheAsTree_TextureSwap_SamePage_NoInvalidation(t *testing.T) {
+	s := NewScene()
+	container := NewContainer("c")
+	sp := NewSprite("sp", TextureRegion{Page: 0, X: 0, Y: 0, Width: 32, Height: 32, OriginalW: 32, OriginalH: 32})
+	container.AddChild(sp)
+	s.Root().AddChild(container)
+	container.SetCacheAsTree(true, CacheTreeManual)
+
+	traverseScene(s) // build
+
+	// Swap texture region (same page).
+	sp.SetTextureRegion(TextureRegion{Page: 0, X: 32, Y: 0, Width: 32, Height: 32, OriginalW: 32, OriginalH: 32})
+
+	traverseScene(s) // should replay from cache with updated UVs
+	if len(s.commands) != 1 {
+		t.Fatalf("expected 1 command, got %d", len(s.commands))
+	}
+	if s.commands[0].TextureRegion.X != 32 {
+		t.Errorf("expected updated UV X=32, got %d", s.commands[0].TextureRegion.X)
+	}
+}
+
+func TestCacheAsTree_TextureSwap_PageChange_Invalidates(t *testing.T) {
+	s := NewScene()
+	container := NewContainer("c")
+	sp := NewSprite("sp", TextureRegion{Page: 0, Width: 32, Height: 32, OriginalW: 32, OriginalH: 32})
+	container.AddChild(sp)
+	s.Root().AddChild(container)
+	container.SetCacheAsTree(true, CacheTreeAuto)
+
+	traverseScene(s) // build
+
+	// Swap to a different page — should invalidate.
+	sp.SetTextureRegion(TextureRegion{Page: 1, Width: 32, Height: 32, OriginalW: 32, OriginalH: 32})
+
+	if !container.cacheTreeDirty {
+		t.Error("page change should have invalidated auto-mode cache")
+	}
+}
+
+func TestCacheAsTree_TreeOps_Invalidate(t *testing.T) {
+	s := NewScene()
+	container := NewContainer("c")
+	sp := NewSprite("sp", TextureRegion{Width: 32, Height: 32, OriginalW: 32, OriginalH: 32})
+	container.AddChild(sp)
+	s.Root().AddChild(container)
+	container.SetCacheAsTree(true, CacheTreeAuto)
+
+	traverseScene(s) // build
+	if container.cacheTreeDirty {
+		t.Error("cache should be clean after build")
+	}
+
+	// AddChild should invalidate.
+	extra := NewSprite("extra", TextureRegion{Width: 16, Height: 16, OriginalW: 16, OriginalH: 16})
+	container.AddChild(extra)
+	if !container.cacheTreeDirty {
+		t.Error("AddChild should invalidate auto cache on self")
+	}
+
+	traverseScene(s) // rebuild
+	// RemoveChild should invalidate.
+	container.RemoveChild(extra)
+	if !container.cacheTreeDirty {
+		t.Error("RemoveChild should invalidate auto cache on self")
+	}
+}
+
+func TestCacheAsTree_MeshBlocksCache(t *testing.T) {
+	s := NewScene()
+	container := NewContainer("c")
+	mesh := NewMesh("m", nil, []ebiten.Vertex{{}, {}, {}}, []uint16{0, 1, 2})
+	container.AddChild(mesh)
+	s.Root().AddChild(container)
+	container.SetCacheAsTree(true, CacheTreeManual)
+
+	traverseScene(s) // build attempt
+
+	// Mesh should block caching — cache stays dirty.
+	if !container.cacheTreeDirty {
+		t.Error("mesh subtree should block cache build")
+	}
+}
+
+func TestCacheAsTree_SortSkip(t *testing.T) {
+	s := NewScene()
+	container := NewContainer("c")
+	for i := 0; i < 5; i++ {
+		sp := NewSprite("sp", TextureRegion{Width: 32, Height: 32, OriginalW: 32, OriginalH: 32})
+		container.AddChild(sp)
+	}
+	s.Root().AddChild(container)
+	container.SetCacheAsTree(true, CacheTreeManual)
+
+	traverseScene(s) // build (dirty)
+	if !s.commandsDirtyThisFrame {
+		t.Error("first traverse should be dirty")
+	}
+
+	traverseScene(s) // replay (clean)
+	if s.commandsDirtyThisFrame {
+		t.Error("second traverse (all cache hits) should not be dirty")
+	}
+}
+
+func TestCacheAsTree_Disable(t *testing.T) {
+	s := NewScene()
+	container := NewContainer("c")
+	sp := NewSprite("sp", TextureRegion{Width: 32, Height: 32, OriginalW: 32, OriginalH: 32})
+	container.AddChild(sp)
+	s.Root().AddChild(container)
+	container.SetCacheAsTree(true, CacheTreeManual)
+
+	traverseScene(s) // build
+	traverseScene(s) // replay
+
+	// Disable.
+	container.SetCacheAsTree(false)
+	if container.cacheTreeEnabled {
+		t.Error("cache should be disabled")
+	}
+	if container.cachedCommands != nil {
+		t.Error("cached commands should be nil after disable")
+	}
+
+	traverseScene(s) // normal traverse
+	if len(s.commands) != 1 {
+		t.Fatalf("expected 1 command after disable, got %d", len(s.commands))
 	}
 }
 
