@@ -302,7 +302,7 @@ func TestCulling_InsideViewport(t *testing.T) {
 	n := NewSprite("visible", TextureRegion{Width: 64, Height: 64, OriginalW: 64, OriginalH: 64})
 	n.worldTransform = [6]float64{1, 0, 0, 1, 100, 100}
 	viewport := Rect{X: 0, Y: 0, Width: 800, Height: 600}
-	if shouldCull(n, viewport) {
+	if shouldCull(n, n.worldTransform, viewport) {
 		t.Error("node inside viewport was culled")
 	}
 }
@@ -311,7 +311,7 @@ func TestCulling_OutsideViewport(t *testing.T) {
 	n := NewSprite("outside", TextureRegion{Width: 64, Height: 64, OriginalW: 64, OriginalH: 64})
 	n.worldTransform = [6]float64{1, 0, 0, 1, -200, -200}
 	viewport := Rect{X: 0, Y: 0, Width: 800, Height: 600}
-	if !shouldCull(n, viewport) {
+	if !shouldCull(n, n.worldTransform, viewport) {
 		t.Error("node outside viewport was not culled")
 	}
 }
@@ -320,7 +320,7 @@ func TestCulling_ContainerNeverCulled(t *testing.T) {
 	n := NewContainer("container")
 	n.worldTransform = [6]float64{1, 0, 0, 1, -9999, -9999}
 	viewport := Rect{X: 0, Y: 0, Width: 800, Height: 600}
-	if shouldCull(n, viewport) {
+	if shouldCull(n, n.worldTransform, viewport) {
 		t.Error("container was culled")
 	}
 }
@@ -329,7 +329,7 @@ func TestCulling_TextNeverCulled(t *testing.T) {
 	n := NewText("text", "hello", nil)
 	n.worldTransform = [6]float64{1, 0, 0, 1, -9999, -9999}
 	viewport := Rect{X: 0, Y: 0, Width: 800, Height: 600}
-	if shouldCull(n, viewport) {
+	if shouldCull(n, n.worldTransform, viewport) {
 		t.Error("text node was culled")
 	}
 }
@@ -358,6 +358,7 @@ func TestCulling_IntegrationWithScene(t *testing.T) {
 	scene.RegisterPage(0, page)
 
 	screen := ebiten.NewImage(800, 600)
+	updateWorldTransform(scene.root, identityTransform, 1.0, false, false)
 	scene.Draw(screen)
 
 	// Only the visible sprite should produce a command
@@ -385,6 +386,7 @@ func TestCulling_DisabledShowsAll(t *testing.T) {
 	scene.Root().AddChild(hidden)
 
 	screen := ebiten.NewImage(800, 600)
+	updateWorldTransform(scene.root, identityTransform, 1.0, false, false)
 	scene.Draw(screen)
 
 	if len(scene.commands) != 2 {
@@ -428,6 +430,7 @@ func TestMultiCamera_BothRender(t *testing.T) {
 	scene.Root().AddChild(sprite)
 
 	screen := ebiten.NewImage(800, 300)
+	updateWorldTransform(scene.root, identityTransform, 1.0, false, false)
 	scene.Draw(screen)
 	// Both cameras should render the sprite — we can verify that Draw didn't panic.
 	// Detailed multi-camera output verification would need pixel checks.
@@ -450,6 +453,7 @@ func TestNoCameraImplicitIdentity(t *testing.T) {
 	scene.Root().AddChild(sprite)
 
 	screen := ebiten.NewImage(800, 600)
+	updateWorldTransform(scene.root, identityTransform, 1.0, false, false)
 	scene.Draw(screen) // Should not panic — uses implicit identity camera
 }
 
@@ -503,7 +507,8 @@ func BenchmarkCulling_10000Nodes(b *testing.B) {
 	}
 
 	screen := ebiten.NewImage(800, 600)
-	// Warm up: first draw computes all transforms
+	// Warm up: compute all transforms then draw
+	updateWorldTransform(scene.root, identityTransform, 1.0, false, false)
 	scene.Draw(screen)
 
 	b.ReportAllocs()

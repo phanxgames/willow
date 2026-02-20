@@ -59,6 +59,10 @@ type Scene struct {
 	store EntityStore
 	debug bool
 
+	// transformsReady is set to true after the first updateWorldTransform call.
+	// Used by Draw to ensure transforms are computed even if Update hasn't run.
+	transformsReady bool
+
 	// ClearColor is the background color used to fill the screen each frame
 	// when the scene is run via [Run]. If left at the zero value (transparent
 	// black), the screen is not filled, resulting in a black background.
@@ -217,7 +221,8 @@ func (s *Scene) Update() {
 
 	// Refresh world transforms first so camera follow targets and hit testing
 	// have accurate positions this frame.
-	updateWorldTransform(s.root, identityTransform, 1.0, true, true)
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
+	s.transformsReady = true
 
 	for _, cam := range s.cameras {
 		cam.update(dt)
@@ -272,22 +277,25 @@ func (s *Scene) Draw(screen *ebiten.Image) {
 // drawWithCamera renders the scene from a camera's perspective.
 // If cam is nil, uses identity view (no camera).
 func (s *Scene) drawWithCamera(target *ebiten.Image, cam *Camera) {
+	// Ensure world transforms are computed if Draw is called before Update
+	// (e.g. manual game loop that skips the first Update call).
+	if !s.transformsReady {
+		updateWorldTransform(s.root, identityTransform, 1.0, false, false)
+		s.transformsReady = true
+	}
+
 	s.commands = s.commands[:0]
 
-	var viewTransform [6]float64
-	viewAlpha := 1.0
-
 	if cam != nil {
-		viewTransform = cam.computeViewMatrix()
+		s.viewTransform = cam.computeViewMatrix()
 		s.cullActive = cam.CullEnabled
 		if cam.CullEnabled {
 			s.cullBounds = cam.Viewport
 		}
 	} else {
-		viewTransform = identityTransform
+		s.viewTransform = identityTransform
 		s.cullActive = false
 	}
-	s.viewTransform = viewTransform
 
 	var stats debugStats
 	var t0 time.Time
@@ -297,7 +305,7 @@ func (s *Scene) drawWithCamera(target *ebiten.Image, cam *Camera) {
 	}
 
 	treeOrder := 0
-	s.traverse(s.root, viewTransform, viewAlpha, true, true, &treeOrder)
+	s.traverse(s.root, &treeOrder)
 
 	if s.debug {
 		stats.traverseTime = time.Since(t0)

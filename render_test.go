@@ -9,8 +9,12 @@ import (
 // helper to build a scene and run traverse without Draw (no ebiten.Image needed)
 func traverseScene(s *Scene) {
 	s.commands = s.commands[:0]
+	// Compute world transforms first (mirrors Scene.Update), then traverse
+	// read-only with identity view.
+	updateWorldTransform(s.root, identityTransform, 1.0, false, false)
+	s.viewTransform = identityTransform
 	treeOrder := 0
-	s.traverse(s.root, identityTransform, 1.0, false, false, &treeOrder)
+	s.traverse(s.root, &treeOrder)
 }
 
 // --- Command emission ---
@@ -339,7 +343,7 @@ func BenchmarkTraverse1000(b *testing.B) {
 	for b.Loop() {
 		s.commands = s.commands[:0]
 		treeOrder := 0
-		s.traverse(s.root, identityTransform, 1.0, false, false, &treeOrder)
+		s.traverse(s.root, &treeOrder)
 	}
 }
 
@@ -352,7 +356,7 @@ func BenchmarkTraverse10000(b *testing.B) {
 	for b.Loop() {
 		s.commands = s.commands[:0]
 		treeOrder := 0
-		s.traverse(s.root, identityTransform, 1.0, false, false, &treeOrder)
+		s.traverse(s.root, &treeOrder)
 	}
 }
 

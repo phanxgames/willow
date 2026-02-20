@@ -288,13 +288,15 @@ func nodeDimensions(n *Node) (w, h float64) {
 }
 
 // shouldCull returns true if the node should be skipped during rendering.
+// viewWorld is the coordinate-space transform used for AABB computation
+// (typically view * worldTransform for screen-space culling).
 // Containers are never culled. Text nodes are culled when measured dimensions are available.
-func shouldCull(n *Node, cullBounds Rect) bool {
+func shouldCull(n *Node, viewWorld [6]float64, cullBounds Rect) bool {
 	switch n.Type {
 	case NodeTypeContainer:
 		return false
 	case NodeTypeMesh:
-		aabb := meshWorldAABBOffset(n)
+		aabb := meshWorldAABBOffset(n, viewWorld)
 		if aabb.Width == 0 && aabb.Height == 0 {
 			return false
 		}
@@ -306,6 +308,6 @@ func shouldCull(n *Node, cullBounds Rect) bool {
 		return false // Can't determine size; don't cull.
 	}
 
-	aabb := worldAABB(n.worldTransform, w, h)
+	aabb := worldAABB(viewWorld, w, h)
 	return !aabb.Intersects(cullBounds)
 }

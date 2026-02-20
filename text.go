@@ -629,7 +629,9 @@ func (f *TTFFont) Face() *text.GoTextFace {
 // --- Text rendering helpers (used by render.go) ---
 
 // emitBitmapTextCommands emits CommandSprite per glyph for a BitmapFont text node.
-func emitBitmapTextCommands(tb *TextBlock, n *Node, commands []RenderCommand, treeOrder *int) []RenderCommand {
+// worldTransform is the coordinate-space transform for glyph positioning
+// (view*world in the main traverse, or an explicit local transform in subtree rendering).
+func emitBitmapTextCommands(tb *TextBlock, n *Node, worldTransform [6]float64, commands []RenderCommand, treeOrder *int) []RenderCommand {
 	lines := tb.layout()
 	if len(lines) == 0 {
 		return commands
@@ -663,7 +665,7 @@ func emitBitmapTextCommands(tb *TextBlock, n *Node, commands []RenderCommand, tr
 				for _, gp := range line.glyphs {
 					*treeOrder++
 					// Compose glyph-local offset into world transform
-					glyphTransform := composeGlyphTransform(n.worldTransform, gp.x+off[0], gp.y+lineY+off[1])
+					glyphTransform := composeGlyphTransform(worldTransform, gp.x+off[0], gp.y+lineY+off[1])
 					commands = append(commands, RenderCommand{
 						Type:          CommandSprite,
 						Transform:     affine32(glyphTransform),
@@ -684,7 +686,7 @@ func emitBitmapTextCommands(tb *TextBlock, n *Node, commands []RenderCommand, tr
 		lineY := float64(li) * lh
 		for _, gp := range line.glyphs {
 			*treeOrder++
-			glyphTransform := composeGlyphTransform(n.worldTransform, gp.x, gp.y+lineY)
+			glyphTransform := composeGlyphTransform(worldTransform, gp.x, gp.y+lineY)
 			commands = append(commands, RenderCommand{
 				Type:          CommandSprite,
 				Transform:     affine32(glyphTransform),
@@ -715,7 +717,7 @@ func composeGlyphTransform(world [6]float64, localX, localY float64) [6]float64 
 // emitTTFTextCommand renders TTF text to a cached image and emits a single
 // CommandSprite. The image is only re-rendered when the text content changes
 // (ttfDirty). May allocate on first render (Ebitengine's internal glyph cache).
-func emitTTFTextCommand(tb *TextBlock, n *Node, commands []RenderCommand, treeOrder *int, pages []*ebiten.Image, nextPage *int) ([]RenderCommand, []*ebiten.Image) {
+func emitTTFTextCommand(tb *TextBlock, n *Node, worldTransform [6]float64, commands []RenderCommand, treeOrder *int, pages []*ebiten.Image, nextPage *int) ([]RenderCommand, []*ebiten.Image) {
 	tb.layout() // ensure measured dims are computed
 	if tb.measuredW == 0 || tb.measuredH == 0 {
 		return commands, pages
@@ -766,7 +768,7 @@ func emitTTFTextCommand(tb *TextBlock, n *Node, commands []RenderCommand, treeOr
 	}
 
 	// Apply horizontal alignment offset within WrapWidth.
-	transform := n.worldTransform
+	transform := worldTransform
 	if tb.WrapWidth > 0 {
 		var offsetX float64
 		switch tb.Align {
@@ -776,7 +778,7 @@ func emitTTFTextCommand(tb *TextBlock, n *Node, commands []RenderCommand, treeOr
 			offsetX = tb.WrapWidth - tb.measuredW
 		}
 		if offsetX != 0 {
-			transform = composeGlyphTransform(n.worldTransform, offsetX, 0)
+			transform = composeGlyphTransform(worldTransform, offsetX, 0)
 		}
 	}
 

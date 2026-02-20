@@ -127,14 +127,15 @@ func meshWorldAABB(n *Node, transform [6]float64) Rect {
 }
 
 // meshWorldAABBOffset is a helper for computing mesh world AABB using the
-// camera culling path, taking advantage of the node's worldTransform.
-func meshWorldAABBOffset(n *Node) Rect {
+// camera culling path. The transform parameter is the coordinate-space
+// transform to use (e.g. view*world for culling in screen space).
+func meshWorldAABBOffset(n *Node, transform [6]float64) Rect {
 	n.recomputeMeshAABB()
 	aabb := n.meshAABB
 	if aabb.Width == 0 && aabb.Height == 0 {
 		return Rect{}
 	}
-	wt := n.worldTransform
+	wt := transform
 	// Transform the four corners of the local AABB.
 	x0 := aabb.X
 	y0 := aabb.Y

@@ -60,31 +60,22 @@ func affine32(m [6]float64) [6]float32 {
 	return [6]float32{float32(m[0]), float32(m[1]), float32(m[2]), float32(m[3]), float32(m[4]), float32(m[5])}
 }
 
-// traverse walks the node tree depth-first, updating transforms and emitting
-// render commands for visible, renderable leaf nodes.
-func (s *Scene) traverse(n *Node, parentTransform [6]float64, parentAlpha float64, parentRecomputed bool, parentAlphaChanged bool, treeOrder *int) {
+// traverse walks the node tree depth-first, emitting render commands for
+// visible, renderable leaf nodes. It is read-only w.r.t. worldTransform —
+// transforms are computed by updateWorldTransform in Update, and traverse
+// applies s.viewTransform locally for screen-space output.
+func (s *Scene) traverse(n *Node, treeOrder *int) {
 	if !n.Visible {
 		return
 	}
 
-	// Update world transform
-	recompute := n.transformDirty || parentRecomputed
-	alphaChanged := n.alphaDirty || parentAlphaChanged
-	if recompute {
-		local := computeLocalTransform(n)
-		n.worldTransform = multiplyAffine(parentTransform, local)
-		n.worldAlpha = parentAlpha * n.Alpha
-		n.transformDirty = false
-		n.alphaDirty = false
-	} else if alphaChanged {
-		n.worldAlpha = parentAlpha * n.Alpha
-		n.alphaDirty = false
-	}
+	// Compute view-adjusted transform for this node (screen-space).
+	viewWorld := multiplyAffine(s.viewTransform, n.worldTransform)
 
 	// Determine if this node is culled. Culling only suppresses this node's
 	// command emission — children are ALWAYS traversed because any node type
 	// may have children whose world positions differ from the parent's AABB.
-	culled := s.cullActive && n.Renderable && shouldCull(n, s.cullBounds)
+	culled := s.cullActive && n.Renderable && shouldCull(n, viewWorld, s.cullBounds)
 
 	// Static command cache: replay cached commands or build the cache.
 	if n.staticCache != nil && !culled {
@@ -93,7 +84,7 @@ func (s *Scene) traverse(n *Node, parentTransform [6]float64, parentAlpha float6
 			return
 		}
 		if !n.staticCache.blocked {
-			s.buildStaticCache(n, recompute, recompute || alphaChanged, treeOrder)
+			s.buildStaticCache(n, treeOrder)
 			return
 		}
 		// blocked: fall through to normal traversal
@@ -113,7 +104,7 @@ func (s *Scene) traverse(n *Node, parentTransform [6]float64, parentAlpha float6
 			*treeOrder++
 			cmd := RenderCommand{
 				Type:        CommandSprite,
-				Transform:   affine32(n.worldTransform),
+				Transform:   affine32(viewWorld),
 				Color:       color32{float32(n.Color.R), float32(n.Color.G), float32(n.Color.B), float32(n.Color.A * n.worldAlpha)},
 				BlendMode:   n.BlendMode,
 				RenderLayer: n.RenderLayer,
@@ -132,11 +123,11 @@ func (s *Scene) traverse(n *Node, parentTransform [6]float64, parentAlpha float6
 			}
 			tintColor := Color{n.Color.R, n.Color.G, n.Color.B, n.Color.A * n.worldAlpha}
 			dst := ensureTransformedVerts(n)
-			transformVertices(n.Vertices, dst, n.worldTransform, tintColor)
+			transformVertices(n.Vertices, dst, viewWorld, tintColor)
 			*treeOrder++
 			s.commands = append(s.commands, RenderCommand{
 				Type:        CommandMesh,
-				Transform:   affine32(n.worldTransform),
+				Transform:   affine32(viewWorld),
 				BlendMode:   n.BlendMode,
 				RenderLayer: n.RenderLayer,
 				GlobalOrder: n.GlobalOrder,
@@ -148,7 +139,7 @@ func (s *Scene) traverse(n *Node, parentTransform [6]float64, parentAlpha float6
 		case NodeTypeParticleEmitter:
 			if n.Emitter != nil && n.Emitter.alive > 0 {
 				*treeOrder++
-				particleTransform := n.worldTransform
+				particleTransform := viewWorld
 				ws := n.Emitter.config.WorldSpace
 				if ws {
 					particleTransform = s.viewTransform
@@ -171,9 +162,9 @@ func (s *Scene) traverse(n *Node, parentTransform [6]float64, parentAlpha float6
 			if n.TextBlock != nil && n.TextBlock.Font != nil {
 				switch n.TextBlock.Font.(type) {
 				case *BitmapFont:
-					s.commands = emitBitmapTextCommands(n.TextBlock, n, s.commands, treeOrder)
+					s.commands = emitBitmapTextCommands(n.TextBlock, n, viewWorld, s.commands, treeOrder)
 				case *TTFFont:
-					s.commands, s.pages = emitTTFTextCommand(n.TextBlock, n, s.commands, treeOrder, s.pages, &s.nextPage)
+					s.commands, s.pages = emitTTFTextCommand(n.TextBlock, n, viewWorld, s.commands, treeOrder, s.pages, &s.nextPage)
 				}
 			}
 			// NodeTypeContainer doesn't emit commands
@@ -192,7 +183,7 @@ func (s *Scene) traverse(n *Node, parentTransform [6]float64, parentAlpha float6
 		children = n.sortedChildren
 	}
 	for _, child := range children {
-		s.traverse(child, n.worldTransform, n.worldAlpha, recompute, recompute || alphaChanged, treeOrder)
+		s.traverse(child, treeOrder)
 	}
 }
 
@@ -329,9 +320,10 @@ func (s *Scene) renderSpecialNode(n *Node, treeOrder *int) {
 
 	// adjustedTransform places RT(0,0) = local(bounds.X, bounds.Y) at the
 	// correct screen position: screen(tx + a*bX + c*bY, ty + b*bX + d*bY).
+	viewWorld := multiplyAffine(s.viewTransform, n.worldTransform)
 	bX, bY := bounds.X, bounds.Y
-	a, b, c, d := n.worldTransform[0], n.worldTransform[1], n.worldTransform[2], n.worldTransform[3]
-	adjustedTransform := n.worldTransform
+	a, b, c, d := viewWorld[0], viewWorld[1], viewWorld[2], viewWorld[3]
+	adjustedTransform := viewWorld
 	adjustedTransform[4] += a*bX + c*bY
 	adjustedTransform[5] += b*bX + d*bY
 
@@ -484,13 +476,13 @@ func invertAffine32(m [6]float32) [6]float32 {
 
 // buildStaticCache traverses the container's subtree normally, captures
 // the emitted commands, and normalizes them relative to the container's
-// current world transform and alpha.
-func (s *Scene) buildStaticCache(n *Node, parentRecomputed bool, parentAlphaChanged bool, treeOrder *int) {
+// current view-adjusted transform and alpha.
+func (s *Scene) buildStaticCache(n *Node, treeOrder *int) {
 	startIdx := len(s.commands)
 
 	// Emit the container's own command if renderable.
-	recompute := n.transformDirty || parentRecomputed
-	culled := s.cullActive && n.Renderable && shouldCull(n, s.cullBounds)
+	viewWorld := multiplyAffine(s.viewTransform, n.worldTransform)
+	culled := s.cullActive && n.Renderable && shouldCull(n, viewWorld, s.cullBounds)
 	if n.Renderable && !culled {
 		s.emitNodeCommandInline(n, treeOrder)
 	}
@@ -505,7 +497,7 @@ func (s *Scene) buildStaticCache(n *Node, parentRecomputed bool, parentAlphaChan
 			children = n.sortedChildren
 		}
 		for _, child := range children {
-			s.traverse(child, n.worldTransform, n.worldAlpha, recompute, recompute || parentAlphaChanged, treeOrder)
+			s.traverse(child, treeOrder)
 		}
 	}
 
@@ -527,8 +519,8 @@ func (s *Scene) buildStaticCache(n *Node, parentRecomputed bool, parentAlphaChan
 		return
 	}
 
-	// Compute inverse of container's world transform for normalization.
-	containerTransform32 := affine32(n.worldTransform)
+	// Compute inverse of container's view-adjusted transform for normalization.
+	containerTransform32 := affine32(viewWorld)
 	invContainer := invertAffine32(containerTransform32)
 	containerAlpha := float32(n.worldAlpha)
 
@@ -559,7 +551,8 @@ func (s *Scene) buildStaticCache(n *Node, parentRecomputed bool, parentAlphaChan
 // replayStaticCache emits cached commands with rebased transforms and alpha.
 func (s *Scene) replayStaticCache(n *Node, treeOrder *int) {
 	sc := n.staticCache
-	containerTransform32 := affine32(n.worldTransform)
+	viewContainerWorld := multiplyAffine(s.viewTransform, n.worldTransform)
+	containerTransform32 := affine32(viewContainerWorld)
 	alpha32 := float32(n.worldAlpha)
 
 	for i := range sc.cmds {
@@ -579,12 +572,13 @@ func (s *Scene) replayStaticCache(n *Node, treeOrder *int) {
 // emitNodeCommandInline emits a command for the node itself (used by buildStaticCache
 // when the cached container is also renderable).
 func (s *Scene) emitNodeCommandInline(n *Node, treeOrder *int) {
+	viewWorld := multiplyAffine(s.viewTransform, n.worldTransform)
 	switch n.Type {
 	case NodeTypeSprite:
 		*treeOrder++
 		cmd := RenderCommand{
 			Type:        CommandSprite,
-			Transform:   affine32(n.worldTransform),
+			Transform:   affine32(viewWorld),
 			Color:       color32{float32(n.Color.R), float32(n.Color.G), float32(n.Color.B), float32(n.Color.A * n.worldAlpha)},
 			BlendMode:   n.BlendMode,
 			RenderLayer: n.RenderLayer,
@@ -601,9 +595,9 @@ func (s *Scene) emitNodeCommandInline(n *Node, treeOrder *int) {
 		if n.TextBlock != nil && n.TextBlock.Font != nil {
 			switch n.TextBlock.Font.(type) {
 			case *BitmapFont:
-				s.commands = emitBitmapTextCommands(n.TextBlock, n, s.commands, treeOrder)
+				s.commands = emitBitmapTextCommands(n.TextBlock, n, viewWorld, s.commands, treeOrder)
 			case *TTFFont:
-				s.commands, s.pages = emitTTFTextCommand(n.TextBlock, n, s.commands, treeOrder, s.pages, &s.nextPage)
+				s.commands, s.pages = emitTTFTextCommand(n.TextBlock, n, viewWorld, s.commands, treeOrder, s.pages, &s.nextPage)
 			}
 		}
 	}

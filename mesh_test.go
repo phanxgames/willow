@@ -222,13 +222,13 @@ func TestMeshCullingWithOffset(t *testing.T) {
 
 	// Cull bounds that DON'T overlap (500 area).
 	cullBounds := Rect{X: 0, Y: 0, Width: 100, Height: 100}
-	if !shouldCull(n, cullBounds) {
+	if !shouldCull(n, n.worldTransform, cullBounds) {
 		t.Error("mesh at (490-510) should be culled by bounds (0-100)")
 	}
 
 	// Cull bounds that DO overlap.
 	cullBounds = Rect{X: 480, Y: 480, Width: 40, Height: 40}
-	if shouldCull(n, cullBounds) {
+	if shouldCull(n, n.worldTransform, cullBounds) {
 		t.Error("mesh at (490-510) should NOT be culled by bounds (480-520)")
 	}
 }
@@ -329,7 +329,7 @@ func TestMeshWorldAABBOffset(t *testing.T) {
 	n := NewMesh("m", nil, verts, nil)
 	n.worldTransform = identityTransform
 
-	aabb := meshWorldAABBOffset(n)
+	aabb := meshWorldAABBOffset(n, n.worldTransform)
 	if !approxEqual(aabb.X, 100, epsilon) || !approxEqual(aabb.Y, 200, epsilon) {
 		t.Errorf("AABB origin = (%f,%f), want (100,200)", aabb.X, aabb.Y)
 	}
@@ -348,7 +348,7 @@ func TestMeshWorldAABBWithScale(t *testing.T) {
 	// Scale by 2.
 	n.worldTransform = [6]float64{2, 0, 0, 2, 0, 0}
 
-	aabb := meshWorldAABBOffset(n)
+	aabb := meshWorldAABBOffset(n, n.worldTransform)
 	if !approxEqual(aabb.Width, 20, epsilon) || !approxEqual(aabb.Height, 20, epsilon) {
 		t.Errorf("scaled AABB size = (%f,%f), want (20,20)", aabb.Width, aabb.Height)
 	}
