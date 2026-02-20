@@ -726,7 +726,13 @@ func emitTTFTextCommand(tb *TextBlock, n *Node, worldTransform [6]float64, comma
 	f := tb.Font.(*TTFFont)
 	alpha := n.worldAlpha
 
-	w := int(tb.measuredW) + 1
+	// For non-left alignment, use WrapWidth (or measuredW) as the image width
+	// so each line can be independently aligned within the image.
+	imgW := tb.measuredW
+	if tb.Align != TextAlignLeft && tb.WrapWidth > 0 {
+		imgW = tb.WrapWidth
+	}
+	w := int(imgW) + 1
 	h := int(tb.measuredH) + 1
 
 	// Re-render only when TTF cache is dirty (content/font/layout changed)
@@ -754,6 +760,17 @@ func emitTTFTextCommand(tb *TextBlock, n *Node, worldTransform [6]float64, comma
 			float32(tb.Color.A),
 		)
 		op.LineSpacing = f.lh
+
+		// Use Ebitengine's PrimaryAlign for per-line alignment within the image.
+		switch tb.Align {
+		case TextAlignCenter:
+			op.PrimaryAlign = text.AlignCenter
+			op.GeoM.Translate(imgW/2, 0)
+		case TextAlignRight:
+			op.PrimaryAlign = text.AlignEnd
+			op.GeoM.Translate(imgW, 0)
+		}
+
 		text.Draw(tb.ttfImage, tb.ttfWrapped, f.face, op)
 
 		// Allocate a page slot once, reuse on subsequent renders
@@ -767,25 +784,10 @@ func emitTTFTextCommand(tb *TextBlock, n *Node, worldTransform [6]float64, comma
 		pages[tb.ttfPage] = tb.ttfImage
 	}
 
-	// Apply horizontal alignment offset within WrapWidth.
-	transform := worldTransform
-	if tb.WrapWidth > 0 {
-		var offsetX float64
-		switch tb.Align {
-		case TextAlignCenter:
-			offsetX = (tb.WrapWidth - tb.measuredW) / 2
-		case TextAlignRight:
-			offsetX = tb.WrapWidth - tb.measuredW
-		}
-		if offsetX != 0 {
-			transform = composeGlyphTransform(worldTransform, offsetX, 0)
-		}
-	}
-
 	*treeOrder++
 	commands = append(commands, RenderCommand{
 		Type:      CommandSprite,
-		Transform: affine32(transform),
+		Transform: affine32(worldTransform),
 		TextureRegion: TextureRegion{
 			Page:      uint16(tb.ttfPage),
 			X:         0,
