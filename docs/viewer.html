@@ -30,13 +30,18 @@
         const params = new URLSearchParams(window.location.search);
         const page = params.get("page") || "getting-started";
 
-        fetch(`pages/${page}.md`)
+        fetch(`pages/${page}.md?ts=${Date.now()}`)
             .then(res => {
                 if (!res.ok) throw new Error(`Page not found: ${page}`);
                 return res.text();
             })
             .then(md => {
                 document.getElementById("content").innerHTML = marked.parse(md);
+                // Open GitHub links in a new tab
+                document.querySelectorAll('a[href*="github.com"]').forEach(a => {
+                    a.target = "_blank";
+                    a.rel = "noopener noreferrer";
+                });
                 // Re-highlight any blocks missed by marked
                 document.querySelectorAll("pre code").forEach(block => {
                     hljs.highlightElement(block);
