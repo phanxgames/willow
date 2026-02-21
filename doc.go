@@ -1,13 +1,12 @@
-// Package willow is a retained-mode 2D scene graph, interaction layer, and
-// render compiler for [Ebitengine].
+// Package willow is a retained-mode 2D game framework for [Ebitengine].
 //
 // Willow provides the scene graph, transform hierarchy, sprite batching, input
 // handling, camera viewports, text rendering, and particle systems that every
-// non-trivial 2D project needs — packaged as a single, focused library.
+// non-trivial 2D game needs.
 //
 // # Game loop
 //
-// There are two ways to integrate Willow into your application.
+// There are two ways to integrate Willow into your game.
 //
 // The simplest is [Run], which creates a window and game loop for you:
 //
