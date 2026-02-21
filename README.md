@@ -144,7 +144,8 @@ go run ./examples/watermesh    # Water surface with per-vertex wave animation
 
 ## Documentation
 
-Full API documentation is available on [pkg.go.dev](https://pkg.go.dev/github.com/phanxgames/willow).
+- **[Willow Docs](https://phanxgames.github.io/willow/docs/)** - Guides, tutorials, and reference
+- **[API Reference](https://pkg.go.dev/github.com/phanxgames/willow)** - Full API documentation on pkg.go.dev
 
 ---
 
