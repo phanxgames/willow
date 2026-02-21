@@ -130,3 +130,13 @@ node.TextBlock.Invalidate()
 width, height := font.MeasureString("Hello!")
 lineH := font.LineHeight()
 ```
+
+## Next Steps
+
+- [Tilemap Viewport](?page=tilemap-viewport) — tile-based map rendering
+- [Polygons](?page=polygons) — point-list polygon shapes
+
+## Related
+
+- [Sprites & Atlas](?page=sprites-and-atlas) — atlas loading and page registration for bitmap fonts
+- [Nodes](?page=nodes) — node types and visual properties

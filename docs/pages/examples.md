@@ -1,137 +1,181 @@
 # Examples
 
-<p align="center">
-  <img src="gif/shapes.gif" alt="Shapes demo" width="400">
-  <img src="gif/tweens.gif" alt="Tweens demo" width="400">
-  <img src="gif/shaders.gif" alt="Shaders demo" width="400">
-  <img src="gif/masks.gif" alt="Masks demo" width="400">
-  <img src="gif/watermesh.gif" alt="Water mesh demo" width="400">
-  <img src="gif/tilemap.gif" alt="Tilemap demo" width="400">
-</p>
-
-Runnable examples are included in the [examples/](https://github.com/phanxgames/willow/tree/main/examples) directory. Clone the repo and run any of them:
+Willow ships with runnable examples covering everything from basic sprites to mesh distortion. Each one is a self-contained `main.go` you can run in a few seconds.
 
 ```bash
 git clone https://github.com/phanxgames/willow.git
 cd willow
+go run ./examples/<name>
 ```
 
-## Basic
+Browse the [examples/ directory on GitHub](https://github.com/phanxgames/willow/tree/main/examples) for full source.
 
-```bash
-go run ./examples/basic
-```
+---
 
-Bouncing colored sprite — the simplest possible Willow app.
+## Basics
 
-## Shapes
+<table>
+<tr>
+<td><a id="basic"></a>
+<strong>Basic</strong><br>
+<code>go run ./examples/basic</code><br><br>
+Bouncing colored sprite — the simplest possible Willow app. Creates a single solid-color sprite that moves and bounces off screen edges.
+</td>
+<td width="260"></td>
+</tr>
+<tr>
+<td><a id="shapes"></a>
+<strong>Shapes</strong><br>
+<code>go run ./examples/shapes</code><br><br>
+Rotating polygon hierarchy demonstrating nested transforms and solid-color sprites. Shows how child nodes inherit and compound parent transformations.
+</td>
+<td width="260"><img src="gif/shapes.gif" alt="Shapes" width="240"></td>
+</tr>
+<tr>
+<td><a id="interaction"></a>
+<strong>Interaction</strong><br>
+<code>go run ./examples/interaction</code><br><br>
+Draggable, clickable rectangles showcasing hit testing and gesture handling. Demonstrates <code>OnClick</code>, <code>OnDrag</code>, and pointer event routing through the scene graph.
+</td>
+<td width="260"></td>
+</tr>
+</table>
 
-```bash
-go run ./examples/shapes
-```
-
-Rotating polygon hierarchy demonstrating nested transforms and solid-color sprites.
-
-## Interaction
-
-```bash
-go run ./examples/interaction
-```
-
-Draggable, clickable rectangles showcasing hit testing and gesture handling.
+---
 
 ## Text
 
-```bash
-go run ./examples/text
-```
+<table>
+<tr>
+<td><a id="text"></a>
+<strong>Bitmap Font</strong><br>
+<code>go run ./examples/text</code><br><br>
+Bitmap font text with alignment and wrapping options. Loads a BMFont file and renders text at different sizes and alignments.
+</td>
+<td width="260"></td>
+</tr>
+<tr>
+<td><a id="ttf-text"></a>
+<strong>TTF Text</strong><br>
+<code>go run ./examples/texttf</code><br><br>
+TrueType font rendering with outline support. Shows how to load a TTF file and render text with configurable outline thickness and color.
+</td>
+<td width="260"></td>
+</tr>
+</table>
 
-Bitmap font text with alignment and wrapping options.
+---
 
-## TTF Text
+## Animation
 
-```bash
-go run ./examples/texttf
-```
+<table>
+<tr>
+<td><a id="tweens"></a>
+<strong>Tweens</strong><br>
+<code>go run ./examples/tweens</code><br><br>
+Position, scale, rotation, alpha, and color tweens using the built-in tween system. Click any sprite to restart its tween. Demonstrates all tween types and easing functions.
+</td>
+<td width="260"><img src="gif/tweens.gif" alt="Tweens" width="240"></td>
+</tr>
+<tr>
+<td><a id="particles"></a>
+<strong>Particles</strong><br>
+<code>go run ./examples/particles</code><br><br>
+Fountain, campfire, and sparkler particle effects. Each emitter uses different configurations for speed, lifetime, color, and gravity to create distinct visual effects.
+</td>
+<td width="260"><img src="gif/particles.gif" alt="Particles" width="240"></td>
+</tr>
+</table>
 
-TTF text rendering with outline support.
+---
 
-## Tweens
+## Visual Effects
 
-```bash
-go run ./examples/tweens
-```
+<table>
+<tr>
+<td><a id="shaders"></a>
+<strong>Shaders</strong><br>
+<code>go run ./examples/shaders</code><br><br>
+Built-in shader filters showcase — blur, glow, chromatic aberration, and more. Demonstrates applying Kage-based post-processing filters to nodes.
+</td>
+<td width="260"><img src="gif/shaders.gif" alt="Shaders" width="240"></td>
+</tr>
+<tr>
+<td><a id="outline"></a>
+<strong>Outline</strong><br>
+<code>go run ./examples/outline</code><br><br>
+Outline and inline filters applied to sprites. Shows how to add colored outlines of varying thickness around any node.
+</td>
+<td width="260"></td>
+</tr>
+<tr>
+<td><a id="masks"></a>
+<strong>Masks</strong><br>
+<code>go run ./examples/masks</code><br><br>
+Star polygon, cursor-following, and erase masking techniques. Demonstrates <code>SetMask</code> and <code>ClearMask</code> for clipping rendered content to arbitrary shapes.
+</td>
+<td width="260"><img src="gif/masks.gif" alt="Masks" width="240"></td>
+</tr>
+<tr>
+<td><a id="lighting"></a>
+<strong>Lighting</strong><br>
+<code>go run ./examples/lighting</code><br><br>
+Dark dungeon scene with colored torch lights. Shows additive blending and light map compositing for dynamic 2D lighting.
+</td>
+<td width="260"><img src="gif/lights.gif" alt="Lighting" width="240"></td>
+</tr>
+</table>
 
-Position, scale, rotation, alpha, and color tweens using the built-in tween system.
+---
 
-## Particles
+## Sprites & Maps
 
-```bash
-go run ./examples/particles
-```
+<table>
+<tr>
+<td><a id="atlas"></a>
+<strong>Atlas</strong><br>
+<code>go run ./examples/atlas</code><br><br>
+TexturePacker atlas loading and sprite sheet display. Loads a JSON atlas exported from TexturePacker and displays individual frames.
+</td>
+<td width="260"></td>
+</tr>
+<tr>
+<td><a id="tilemap"></a>
+<strong>Tilemap</strong><br>
+<code>go run ./examples/tilemap</code><br><br>
+Tile map rendering with camera panning. Builds a tile grid from a tileset image and moves the camera with arrow keys or dragging.
+</td>
+<td width="260"><img src="gif/tilemap.gif" alt="Tilemap" width="240"></td>
+</tr>
+<tr>
+<td><a id="tilemap-viewport"></a>
+<strong>Tilemap Viewport</strong><br>
+<code>go run ./examples/tilemapviewport</code><br><br>
+Tilemap rendered through a viewport with culling. Only visible tiles are drawn, demonstrating efficient large-map rendering.
+</td>
+<td width="260"></td>
+</tr>
+</table>
 
-Fountain, campfire, and sparkler particle effects.
+---
 
-## Shaders
+## Meshes
 
-```bash
-go run ./examples/shaders
-```
-
-Built-in shader filters showcase — blur, glow, chromatic aberration, and more.
-
-## Outline
-
-```bash
-go run ./examples/outline
-```
-
-Outline and inline filters applied to sprites.
-
-## Masks
-
-```bash
-go run ./examples/masks
-```
-
-Star polygon, cursor-following, and erase masking techniques.
-
-## Lighting
-
-```bash
-go run ./examples/lighting
-```
-
-Dark dungeon scene with colored torch lights.
-
-## Atlas
-
-```bash
-go run ./examples/atlas
-```
-
-TexturePacker atlas loading and sprite sheet display.
-
-## Tilemap
-
-```bash
-go run ./examples/tilemap
-```
-
-Tile map rendering with camera panning.
-
-## Rope
-
-```bash
-go run ./examples/rope
-```
-
-Draggable endpoints connected by a textured rope mesh.
-
-## Water Mesh
-
-```bash
-go run ./examples/watermesh
-```
-
-Water surface with per-vertex wave animation.
+<table>
+<tr>
+<td><a id="rope"></a>
+<strong>Rope</strong><br>
+<code>go run ./examples/rope</code><br><br>
+Draggable endpoints connected by a textured rope mesh. Demonstrates mesh-based rendering with per-vertex UV mapping and interactive control points.
+</td>
+<td width="260"></td>
+</tr>
+<tr>
+<td><a id="water-mesh"></a>
+<strong>Water Mesh</strong><br>
+<code>go run ./examples/watermesh</code><br><br>
+Water surface with per-vertex wave animation. Uses a mesh grid with vertices displaced by sine waves to create an animated water effect.
+</td>
+<td width="260"><img src="gif/watermesh.gif" alt="Water Mesh" width="240"></td>
+</tr>
+</table>

@@ -92,3 +92,14 @@ Willow tracks whether a node's world transform needs recomputation via dirty fla
 - A parent's transform changes (propagates to all descendants)
 
 World matrices are lazily recomputed during `scene.Update()` only for nodes that are actually dirty, avoiding unnecessary matrix math for static nodes.
+
+## Next Steps
+
+- [Solid-Color Sprites](?page=solid-color-sprites) — creating shapes with scale and color
+- [Sprites & Atlas](?page=sprites-and-atlas) — loading texture atlases and regions
+- [Camera & Viewport](?page=camera-and-viewport) — camera transforms and screen-to-world conversion
+
+## Related
+
+- [Nodes](?page=nodes) — node types, visual properties, and tree manipulation
+- [Architecture](?page=architecture) — how dirty flags fit into the render pipeline

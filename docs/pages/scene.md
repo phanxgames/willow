@@ -28,48 +28,9 @@ root.AddChild(mySprite)
 
 All visible content must be added to the root (or a descendant of the root) to be rendered.
 
-## Update and Draw
+## RunConfig
 
-```go
-func (g *Game) Update() error {
-    g.scene.Update()
-    return nil
-}
-
-func (g *Game) Draw(screen *ebiten.Image) {
-    g.scene.Draw(screen)
-}
-```
-
-`Update()` processes input, fires callbacks, updates transforms, and simulates particles. `Draw()` traverses the tree, sorts commands, and renders to the screen.
-
-## SetUpdateFunc
-
-For simple projects, attach an update callback instead of implementing a full game struct:
-
-```go
-scene.SetUpdateFunc(func() error {
-    // game logic here
-    return nil
-})
-```
-
-This function is called once per frame during `scene.Update()`.
-
-## Run Helper
-
-The `Run()` function wraps Ebitengine's `RunGame` with sensible defaults:
-
-```go
-willow.Run(scene, willow.RunConfig{
-    Title:   "My Game",
-    Width:   800,
-    Height:  600,
-    ShowFPS: true,
-})
-```
-
-### RunConfig
+When using the `willow.Run()` helper, these fields configure the window:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -80,49 +41,26 @@ willow.Run(scene, willow.RunConfig{
 
 When `ShowFPS` is true, an FPS widget is added at `RenderLayer` 255 (always on top).
 
-## Camera Management
-
-```go
-cam := scene.NewCamera(willow.Rect{X: 0, Y: 0, Width: 800, Height: 600})
-scene.RemoveCamera(cam)
-cams := scene.Cameras()
-```
-
-See the [Camera & Viewport](?page=camera-and-viewport) page for details.
-
-## Atlas Loading
-
-```go
-atlas, err := scene.LoadAtlas(jsonData, []*ebiten.Image{pageImg})
-region := atlas.Region("player_idle")
-```
-
-You can also register atlas pages independently:
-
-```go
-scene.RegisterPage(0, pageImage)
-```
-
-See [Sprites & Atlas](?page=sprites-and-atlas) for details.
-
-## Debug and Batch Mode
-
-```go
-scene.SetDebugMode(true)   // enable debug overlays
-scene.SetBatchMode(willow.BatchModeImmediate)  // switch to per-sprite rendering
-```
-
-### BatchMode
+## Batch Mode
 
 | Mode | Description |
 |------|-------------|
 | `BatchModeCoalesced` | Default. Accumulates vertices and submits one `DrawTriangles32` per batch run. Best performance. |
 | `BatchModeImmediate` | One `DrawImage` per sprite. Useful for debugging. |
 
-## ECS Integration
-
 ```go
-scene.SetEntityStore(store)
+scene.SetBatchMode(willow.BatchModeImmediate)  // switch to per-sprite rendering
 ```
 
-See [ECS Integration](?page=ecs-integration) for details.
+## Next Steps
+
+- [Nodes](?page=nodes) — node types, visual properties, and tree manipulation
+- [Camera & Viewport](?page=camera-and-viewport) — camera creation, follow, zoom, and culling
+- [Sprites & Atlas](?page=sprites-and-atlas) — atlas loading with `scene.LoadAtlas()`
+
+## Related
+
+- [Getting Started](?page=getting-started) — game loop integration, `willow.Run()`, and `SetUpdateFunc`
+- [Debug & Testing](?page=debug-and-testing) — debug overlays with `scene.SetDebugMode()`
+- [ECS Integration](?page=ecs-integration) — connecting an entity store with `scene.SetEntityStore()`
+- [Architecture](?page=architecture) — render pipeline and performance design

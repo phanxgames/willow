@@ -21,12 +21,6 @@ group := willow.NewContainer("enemies")
 // Sprite from atlas region
 player := willow.NewSprite("player", atlas.Region("player_idle"))
 
-// Solid-color sprite (uses WhitePixel)
-rect := willow.NewSprite("bg", willow.TextureRegion{})
-rect.Color = willow.Color{R: 0, G: 0.3, B: 0.8, A: 1}
-rect.ScaleX = 200
-rect.ScaleY = 100
-
 // Text
 label := willow.NewText("score", "Score: 0", myFont)
 
@@ -37,9 +31,7 @@ emitter := willow.NewParticleEmitter("sparks", emitterConfig)
 mesh := willow.NewMesh("grid", img, vertices, indices)
 ```
 
-## Key Properties
-
-### Visual
+## Visual Properties
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -51,7 +43,7 @@ mesh := willow.NewMesh("grid", img, vertices, indices)
 | `RenderLayer` | `uint8` | Primary sort key; lower values draw first |
 | `GlobalOrder` | `int` | Secondary sort key within same RenderLayer |
 
-### Blend Modes
+## Blend Modes
 
 | Mode | Description |
 |------|-------------|
@@ -64,17 +56,7 @@ mesh := willow.NewMesh("grid", img, vertices, indices)
 | `BlendBelow` | Destination-over (draw behind) |
 | `BlendNone` | Opaque copy (skip blending) |
 
-### Transform
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `X`, `Y` | `float64` | Local position (Y-down coordinate system) |
-| `ScaleX`, `ScaleY` | `float64` | Local scale (1.0 = original size) |
-| `Rotation` | `float64` | Radians, clockwise |
-| `SkewX`, `SkewY` | `float64` | Shear angles in radians |
-| `PivotX`, `PivotY` | `float64` | Transform origin in local pixels |
-
-### Identity
+## Identity Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -114,21 +96,24 @@ foreground.SetZIndex(10)  // draws on top
 
 Use `SetChildIndex(child, index)` to reorder children directly.
 
-## Property Setters
+## Update Callback
 
-For properties that affect rendering, use the setter methods. These automatically mark transforms dirty and invalidate ancestor caches:
+Attach per-node logic that runs each frame during `scene.Update()`:
 
 ```go
-node.SetColor(willow.Color{R: 1, G: 0, B: 0, A: 1})
-node.SetBlendMode(willow.BlendAdd)
-node.SetVisible(false)
-node.SetRenderable(false)
-node.SetTextureRegion(newRegion)
-node.SetRenderLayer(2)
-node.SetGlobalOrder(5)
+node.OnUpdate = func(dt float64) {
+    node.X += speed * dt
+}
 ```
 
-> **Note:** Directly assigning fields like `node.X = 10` is valid but does not call `Invalidate()` automatically. Either use `SetPosition()` or call `node.Invalidate()` after bulk field updates.
+## Custom Images
+
+For nodes that need a manually-managed image instead of an atlas region:
+
+```go
+node.SetCustomImage(myImage)
+img := node.CustomImage()
+```
 
 ## Disposal
 
@@ -139,27 +124,16 @@ node.IsDisposed()        // check if disposed
 
 Disposing a node also disposes all its children. Disposed nodes cannot be reused.
 
-## Callbacks
+## Next Steps
 
-Nodes support per-node callbacks for update and interaction:
+- [Transforms](?page=transforms) — position, scale, rotation, pivot, and dirty flags
+- [Solid-Color Sprites](?page=solid-color-sprites) — creating shapes without textures
+- [Sprites & Atlas](?page=sprites-and-atlas) — loading texture atlases and regions
+- [Input & Hit Testing](?page=input-hit-testing-and-gestures) — making nodes interactive
 
-```go
-node.OnUpdate = func(dt float64) {
-    // called each frame during scene.Update()
-}
+## Related
 
-node.OnClick = func(ctx willow.ClickContext) {
-    fmt.Println("Clicked at", ctx.GlobalX, ctx.GlobalY)
-}
-```
-
-See [Input, Hit Testing & Gestures](?page=input-hit-testing-and-gestures) for the full callback API.
-
-## Custom Images
-
-For nodes that need a manually-managed image instead of an atlas region:
-
-```go
-node.SetCustomImage(myImage)
-img := node.CustomImage()
-```
+- [Scene](?page=scene) — the scene that owns the root node
+- [Particles](?page=particles) — CPU-simulated particle emitters
+- [Mesh & Distortion](?page=meshes) — custom vertex geometry and distortion grids
+- [Text & Fonts](?page=text-and-fonts) — bitmap and TTF text rendering

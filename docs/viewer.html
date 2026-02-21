@@ -46,6 +46,11 @@
                 document.querySelectorAll("pre code").forEach(block => {
                     hljs.highlightElement(block);
                 });
+                // Scroll to anchor if present
+                if (window.location.hash) {
+                    const target = document.getElementById(window.location.hash.slice(1));
+                    if (target) target.scrollIntoView({ behavior: "instant" });
+                }
             })
             .catch(err => {
                 document.getElementById("content").innerHTML =

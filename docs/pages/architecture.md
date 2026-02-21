@@ -1,22 +1,6 @@
 # Architecture
 
-## What is Willow?
-
-Willow is a **retained-mode** 2D game framework built on [Ebitengine](https://ebitengine.org/). You create a tree of nodes representing your game objects, and Willow handles passing the draw commands down to Ebitengine. This means you describe *what* to render by building a tree of nodes rather than *how* to render by issuing draw commands each frame.
-
-You build a tree of `Node` objects — containers, sprites, text, particles, meshes — and Willow traverses that tree each frame to produce an optimized list of render commands for Ebitengine.
-
-It sits between Ebitengine and your game:
-
-```
-Your Game             - gameplay, content, logic
-Willow                - scene graph, rendering, interaction
-Ebitengine            - GPU backend, window, audio, platform
-```
-
-## How You Use It
-
-You own the game loop. You create a `Scene`, call `scene.Update()` and `scene.Draw(screen)` from your Ebitengine game, and Willow handles everything else. The `willow.Run()` helper is a convenience wrapper, not a requirement.
+This page covers the internal design of Willow — the update/draw split, scene tree structure, render pipeline, and performance strategy. For an overview of what Willow is and what it can do, see [What is Willow?](?page=what-is-willow).
 
 ## Update / Draw Separation
 
@@ -94,3 +78,15 @@ Willow targets **10,000+ sprites at 120+ FPS** on desktop and **60+ FPS** on mob
 Willow is a single flat Go package (`github.com/phanxgames/willow`). There are no `internal/` sub-packages. Go's unexported (lowercase) visibility serves as the internal boundary.
 
 The ECS adapter lives in a separate submodule at `github.com/phanxgames/willow/ecs`.
+
+## Next Steps
+
+- [Performance](?page=performance-overview) — benchmarks, batching strategy, and optimization tips
+- [Scene](?page=scene) — scene configuration and batch modes
+- [Nodes](?page=nodes) — node types, visual properties, and tree manipulation
+
+## Related
+
+- [What is Willow?](?page=what-is-willow) — high-level overview and feature list
+- [CacheAsTree](?page=cache-as-tree) — command list caching for stable subtrees
+- [Post-Processing Filters](?page=post-processing-filters) — filter pass details

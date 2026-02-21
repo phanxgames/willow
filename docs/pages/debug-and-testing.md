@@ -108,3 +108,13 @@ fps := willow.NewFPSWidget()
 scene.Root().AddChild(fps)
 // Updates every 0.5 seconds, renders at RenderLayer 255
 ```
+
+## Next Steps
+
+- [ECS Integration](?page=ecs-integration) — bridge scene graph interactions to an entity store
+
+## Related
+
+- [Events & Callbacks](?page=events-and-callbacks) — the callback system that input injection feeds into
+- [Scene](?page=scene) — `ScreenshotDir` field and `SetDebugMode`
+- [Performance](?page=performance-overview) — benchmarking and optimization strategies

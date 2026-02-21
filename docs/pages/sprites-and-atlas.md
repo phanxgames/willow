@@ -1,5 +1,7 @@
 # Sprites & Atlas
 
+Sprites are the primary way to display images in Willow. You load a texture atlas (packed spritesheet), then create sprites from named regions within it.
+
 ## TextureRegion
 
 A `TextureRegion` describes a rectangular sub-image within an atlas page:
@@ -59,19 +61,6 @@ sprite := willow.NewSprite("player", region)
 
 If a name isn't found, `Region()` returns a magenta placeholder and logs a warning (in debug mode), so missing sprites are immediately visible.
 
-## Solid-Color Sprites
-
-The standard pattern for colored rectangles, backgrounds, and UI elements:
-
-```go
-box := willow.NewSprite("box", willow.TextureRegion{})
-box.Color = willow.Color{R: 0.2, G: 0.6, B: 1, A: 1}
-box.ScaleX = 150  // width
-box.ScaleY = 80   // height
-```
-
-This uses `willow.WhitePixel` (a shared 1x1 white `*ebiten.Image`). The `Color` field tints it to any color, and `ScaleX`/`ScaleY` determine the size. This approach avoids creating unique images for each color and enables efficient batching.
-
 ## TexturePacker Workflow
 
 1. Add your source sprites to TexturePacker
@@ -103,3 +92,14 @@ For bitmap fonts and tilemaps that reference atlas pages by index:
 ```go
 scene.RegisterPage(0, pageImage)
 ```
+
+## Next Steps
+
+- [Camera & Viewport](?page=camera-and-viewport) — viewport setup, follow, zoom, and culling
+- [Text & Fonts](?page=text-and-fonts) — bitmap and TTF text rendering
+
+## Related
+
+- [Solid-Color Sprites](?page=solid-color-sprites) — shapes without textures using `WhitePixel`
+- [Scene](?page=scene) — atlas loading via `scene.LoadAtlas()`
+- [Nodes](?page=nodes) — node types and visual properties

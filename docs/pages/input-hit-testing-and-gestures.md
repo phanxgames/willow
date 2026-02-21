@@ -1,6 +1,6 @@
-# Input, Hit Testing & Gestures
+# Input & Hit Testing
 
-Willow provides a complete input system with hit testing, pointer events, drag, and multi-touch pinch — all integrated into the scene graph.
+Willow's input system is integrated into the scene graph. Any node can become interactive by enabling hit testing — Willow handles pointer dispatch, gesture recognition, and coordinate conversion automatically.
 
 ## Making Nodes Interactive
 
@@ -33,7 +33,9 @@ willow.HitPolygon{Points: []willow.Vec2{
 }}
 ```
 
-Custom shapes can implement the `HitShape` interface:
+### Custom Hit Shapes
+
+Implement the `HitShape` interface for custom geometry:
 
 ```go
 type HitShape interface {
@@ -41,116 +43,11 @@ type HitShape interface {
 }
 ```
 
-## Node-Level Callbacks
+Coordinates passed to `Contains` are in the node's local space.
 
-Assign callback functions directly to nodes:
+## How Hit Testing Works
 
-```go
-node.OnPointerDown = func(ctx willow.PointerContext) { /* ... */ }
-node.OnPointerUp   = func(ctx willow.PointerContext) { /* ... */ }
-node.OnPointerMove = func(ctx willow.PointerContext) { /* ... */ }
-node.OnClick       = func(ctx willow.ClickContext)   { /* ... */ }
-node.OnDragStart   = func(ctx willow.DragContext)    { /* ... */ }
-node.OnDrag        = func(ctx willow.DragContext)     { /* ... */ }
-node.OnDragEnd     = func(ctx willow.DragContext)     { /* ... */ }
-node.OnPinch       = func(ctx willow.PinchContext)    { /* ... */ }
-node.OnPointerEnter = func(ctx willow.PointerContext) { /* ... */ }
-node.OnPointerLeave = func(ctx willow.PointerContext) { /* ... */ }
-```
-
-## Context Types
-
-### PointerContext
-
-```go
-type PointerContext struct {
-    Node      *Node
-    EntityID  uint32
-    UserData  any
-    GlobalX, GlobalY float64  // world coordinates
-    LocalX, LocalY   float64  // node-local coordinates
-    Button    MouseButton
-    PointerID int
-    Modifiers KeyModifiers
-}
-```
-
-### ClickContext
-
-Same fields as `PointerContext`.
-
-### DragContext
-
-```go
-type DragContext struct {
-    Node              *Node
-    EntityID          uint32
-    UserData          any
-    GlobalX, GlobalY  float64  // current world position
-    LocalX, LocalY    float64  // current node-local position
-    StartX, StartY    float64  // drag start position
-    DeltaX, DeltaY    float64  // world-space delta since last frame
-    ScreenDeltaX, ScreenDeltaY float64  // screen-space delta
-    Button            MouseButton
-    PointerID         int
-    Modifiers         KeyModifiers
-}
-```
-
-### PinchContext
-
-```go
-type PinchContext struct {
-    CenterX, CenterY  float64  // pinch center
-    Scale, ScaleDelta  float64  // cumulative and per-frame scale
-    Rotation, RotDelta float64  // cumulative and per-frame rotation
-}
-```
-
-## Scene-Level Handlers
-
-Register handlers that fire for *any* node interaction. Scene-level handlers fire before per-node callbacks:
-
-```go
-handle := scene.OnClick(func(ctx willow.ClickContext) {
-    fmt.Printf("Click on node: %s\n", ctx.Node.Name)
-})
-
-// Remove when no longer needed
-handle.Remove()
-```
-
-All scene-level registration methods return a `CallbackHandle`:
-
-```go
-scene.OnPointerDown(fn)   // CallbackHandle
-scene.OnPointerUp(fn)
-scene.OnPointerMove(fn)
-scene.OnPointerEnter(fn)
-scene.OnPointerLeave(fn)
-scene.OnClick(fn)
-scene.OnDragStart(fn)
-scene.OnDrag(fn)
-scene.OnDragEnd(fn)
-scene.OnPinch(fn)
-```
-
-## Pointer Capture
-
-Force all pointer events to go to a specific node, regardless of hit testing:
-
-```go
-scene.CapturePointer(0, myNode)   // pointerID 0 = primary mouse
-scene.ReleasePointer(0)
-```
-
-## Drag Dead Zone
-
-Configure how many pixels the pointer must move before a drag starts (default: 4):
-
-```go
-scene.SetDragDeadZone(8.0)
-```
+During `scene.Update()`, Willow converts pointer coordinates from screen space to world space (via the active camera), then walks the scene tree in reverse draw order. For each node with `Interactable = true`, it transforms the pointer into the node's local space and calls `HitShape.Contains()`. The first hit wins.
 
 ## Mouse Buttons
 
@@ -179,19 +76,12 @@ node.OnClick = func(ctx willow.ClickContext) {
 }
 ```
 
-## Event Types
+## Next Steps
 
-```go
-willow.EventPointerDown
-willow.EventPointerUp
-willow.EventPointerMove
-willow.EventClick
-willow.EventDragStart
-willow.EventDrag
-willow.EventDragEnd
-willow.EventPinch
-willow.EventPointerEnter
-willow.EventPointerLeave
-```
+- [Events & Callbacks](?page=events-and-callbacks) — node-level and scene-level callback API, context types, drag, and pinch
 
-These are used primarily with the ECS integration for `InteractionEvent.Type`.
+## Related
+
+- [Nodes](?page=nodes) — node properties including `Interactable` and `EntityID`
+- [Transforms](?page=transforms) — coordinate conversion between local and world space
+- [Camera & Viewport](?page=camera-and-viewport) — screen-to-world conversion

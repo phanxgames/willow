@@ -117,4 +117,16 @@ sprite.Filters = []willow.Filter{csf}
 
 ## Performance Notes
 
-Filters require offscreen rendering, which adds overhead. For static content, combine filters with [CacheAsTexture](?page=performance-caching) to avoid re-applying filters every frame.
+Filters require offscreen rendering, which adds overhead. For static content, combine filters with [CacheAsTexture](?page=cache-as-texture) to avoid re-applying filters every frame.
+
+## Next Steps
+
+- [CacheAsTree](?page=cache-as-tree) — command list caching for semi-static subtrees
+- [CacheAsTexture](?page=cache-as-texture) — cache filtered content to avoid re-applying every frame
+
+## Related
+
+- [Offscreen Rendering](?page=offscreen-rendering) — filters use offscreen buffers internally
+- [Clipping & Masks](?page=clipping-and-masks) — alpha-based clipping (non-shader approach)
+- [Lighting](?page=lighting) — another compositing effect
+- [Performance](?page=performance-overview) — benchmarks, batching, and optimization strategies

@@ -109,3 +109,14 @@ for i := 0; i < 100; i++ {
 bg := rt.NewSpriteNode("stars")
 scene.Root().AddChild(bg)
 ```
+
+## Next Steps
+
+- [Input & Hit Testing](?page=input-hit-testing-and-gestures) — making nodes interactive
+- [Tweens & Animation](?page=tweens-and-animation) — animate properties over time
+
+## Related
+
+- [Post-Processing Filters](?page=post-processing-filters) — shader effects that use offscreen buffers
+- [Lighting](?page=lighting) — light layer uses a RenderTexture internally
+- [CacheAsTexture](?page=cache-as-texture) — cache static offscreen content

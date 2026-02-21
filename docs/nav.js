@@ -10,8 +10,10 @@ const NAV_TABS = [
         {
             title: "Getting Started",
             items: [
+                { label: "What is Willow?", page: "what-is-willow" },
                 { label: "Getting Started", page: "getting-started" },
                 { label: "Architecture", page: "architecture" },
+                { label: "Performance", page: "performance-overview" },
             ]
         },
         {
@@ -25,16 +27,20 @@ const NAV_TABS = [
         {
             title: "Rendering",
             items: [
+                { label: "Solid-Color Sprites", page: "solid-color-sprites" },
                 { label: "Sprites & Atlas", page: "sprites-and-atlas" },
                 { label: "Camera & Viewport", page: "camera-and-viewport" },
                 { label: "Text & Fonts", page: "text-and-fonts" },
                 { label: "Tilemap Viewport", page: "tilemap-viewport" },
+                { label: "Polygons", page: "polygons" },
+                { label: "Offscreen Rendering", page: "offscreen-rendering" },
             ]
         },
         {
             title: "Input",
             items: [
-                { label: "Input, Hit Testing & Gestures", page: "input-hit-testing-and-gestures" },
+                { label: "Input & Hit Testing", page: "input-hit-testing-and-gestures" },
+                { label: "Events & Callbacks", page: "events-and-callbacks" },
             ]
         },
         {
@@ -42,17 +48,18 @@ const NAV_TABS = [
             items: [
                 { label: "Tweens & Animation", page: "tweens-and-animation" },
                 { label: "Particles", page: "particles" },
+                { label: "Mesh & Distortion", page: "meshes" },
+                { label: "Ropes", page: "ropes" },
                 { label: "Lighting", page: "lighting" },
+                { label: "Clipping & Masks", page: "clipping-and-masks" },
                 { label: "Post-Processing Filters", page: "post-processing-filters" },
             ]
         },
         {
-            title: "Advanced",
+            title: "Caching",
             items: [
-                { label: "Mesh, Ropes & Polygons", page: "mesh-ropes-and-polygons" },
-                { label: "Offscreen Rendering", page: "offscreen-rendering" },
-                { label: "Clipping & Masks", page: "clipping-and-masks" },
-                { label: "Performance Caching", page: "performance-caching" },
+                { label: "CacheAsTree", page: "cache-as-tree" },
+                { label: "CacheAsTexture", page: "cache-as-texture" },
             ]
         },
         {
@@ -64,7 +71,34 @@ const NAV_TABS = [
         },
     ]},
     { id: "examples", label: "Examples", sections: [
-        { title: "Examples", items: [{ label: "Examples", page: "examples" }] }
+        { title: "Basics", items: [
+            { label: "Basic", page: "examples", anchor: "basic" },
+            { label: "Shapes", page: "examples", anchor: "shapes" },
+            { label: "Interaction", page: "examples", anchor: "interaction" },
+        ]},
+        { title: "Text", items: [
+            { label: "Bitmap Font", page: "examples", anchor: "text" },
+            { label: "TTF Text", page: "examples", anchor: "ttf-text" },
+        ]},
+        { title: "Animation", items: [
+            { label: "Tweens", page: "examples", anchor: "tweens" },
+            { label: "Particles", page: "examples", anchor: "particles" },
+        ]},
+        { title: "Visual Effects", items: [
+            { label: "Shaders", page: "examples", anchor: "shaders" },
+            { label: "Outline", page: "examples", anchor: "outline" },
+            { label: "Masks", page: "examples", anchor: "masks" },
+            { label: "Lighting", page: "examples", anchor: "lighting" },
+        ]},
+        { title: "Sprites & Maps", items: [
+            { label: "Atlas", page: "examples", anchor: "atlas" },
+            { label: "Tilemap", page: "examples", anchor: "tilemap" },
+            { label: "Tilemap Viewport", page: "examples", anchor: "tilemap-viewport" },
+        ]},
+        { title: "Meshes", items: [
+            { label: "Rope", page: "examples", anchor: "rope" },
+            { label: "Water Mesh", page: "examples", anchor: "water-mesh" },
+        ]},
     ]},
     { id: "demos", label: "Demos", sections: [
         { title: "Demos", items: [{ label: "Demos (Coming Soon)", page: "demos" }] }
@@ -103,12 +137,12 @@ function buildTabs() {
         const btn = document.createElement("button");
         btn.className = "sidebar-tab" + (tab.id === activeTabId ? " active" : "");
         btn.textContent = tab.label;
-        btn.addEventListener("click", () => switchTab(tab.id));
+        btn.addEventListener("click", () => switchTab(tab.id, true));
         container.appendChild(btn);
     });
 }
 
-function switchTab(tabId) {
+function switchTab(tabId, autoNavigate) {
     activeTabId = tabId;
 
     document.querySelectorAll(".sidebar-tab").forEach(btn => {
@@ -117,6 +151,18 @@ function switchTab(tabId) {
 
     const tab = NAV_TABS.find(t => t.id === tabId);
     if (tab) buildSidebar(tab.sections);
+
+    // Navigate to the first page in the tab when clicked directly
+    if (autoNavigate && tab) {
+        for (const section of tab.sections) {
+            for (const item of section.items) {
+                if (item.page) {
+                    navigateTo(item.page, item.anchor);
+                    return;
+                }
+            }
+        }
+    }
 }
 
 function buildFooter() {
@@ -137,6 +183,7 @@ function buildFooter() {
 function buildSidebar(sections) {
     const nav = document.getElementById("sidebar-nav");
     const activePage = getActivePage();
+    const activeAnchor = window.location.hash ? window.location.hash.slice(1) : null;
     nav.innerHTML = "";
 
     sections.forEach(section => {
@@ -163,6 +210,15 @@ function buildSidebar(sections) {
                 a.href = item.href;
                 a.target = "_blank";
                 a.rel = "noopener noreferrer";
+            } else if (item.anchor) {
+                a.href = `?page=${item.page}#${item.anchor}`;
+                if (item.page === activePage && item.anchor === activeAnchor) {
+                    a.className = "active";
+                }
+                a.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    navigateTo(item.page, item.anchor);
+                });
             } else {
                 a.href = `?page=${item.page}`;
                 if (item.page === activePage) {
@@ -182,9 +238,17 @@ function buildSidebar(sections) {
     });
 }
 
-function navigateTo(page) {
+function scrollToActive() {
+    const activeLink = document.querySelector(".nav-item a.active");
+    if (activeLink) {
+        activeLink.scrollIntoView({ block: "center", behavior: "instant" });
+    }
+}
+
+function navigateTo(page, anchor) {
     if (!page) return;
-    history.pushState({page}, "", `?page=${page}`);
+    const url = anchor ? `?page=${page}#${anchor}` : `?page=${page}`;
+    history.pushState({page, anchor}, "", url);
 
     // Switch to correct tab if needed
     const tabId = findTabForPage(page);
@@ -195,12 +259,20 @@ function navigateTo(page) {
     // Update active state in sidebar
     document.querySelectorAll(".nav-item a").forEach(a => {
         const href = a.getAttribute("href");
-        a.classList.toggle("active", href === `?page=${page}`);
+        const isActive = anchor
+            ? href === `?page=${page}#${anchor}`
+            : href === `?page=${page}`;
+        a.classList.toggle("active", isActive);
     });
+
+    scrollToActive();
 
     // Load page in iframe
     const iframe = document.getElementById("content-frame");
-    iframe.src = `viewer.html?page=${page}`;
+    const iframeSrc = anchor
+        ? `viewer.html?page=${page}#${anchor}`
+        : `viewer.html?page=${page}`;
+    iframe.src = iframeSrc;
 
     // Close mobile sidebar
     document.querySelector(".sidebar").classList.remove("open");
@@ -209,6 +281,7 @@ function navigateTo(page) {
 
 window.addEventListener("popstate", (e) => {
     const page = (e.state && e.state.page) || getActivePage();
+    const anchor = e.state && e.state.anchor;
 
     const tabId = findTabForPage(page);
     if (tabId !== activeTabId) {
@@ -216,12 +289,17 @@ window.addEventListener("popstate", (e) => {
     }
 
     const iframe = document.getElementById("content-frame");
-    iframe.src = `viewer.html?page=${page}`;
+    iframe.src = anchor
+        ? `viewer.html?page=${page}#${anchor}`
+        : `viewer.html?page=${page}`;
 
     document.querySelectorAll(".nav-item a").forEach(a => {
         const href = a.getAttribute("href");
-        a.classList.toggle("active", href === `?page=${page}`);
+        const url = anchor ? `?page=${page}#${anchor}` : `?page=${page}`;
+        a.classList.toggle("active", href === url);
     });
+
+    scrollToActive();
 });
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -250,6 +328,8 @@ document.addEventListener("DOMContentLoaded", () => {
             overlay.classList.remove("visible");
         });
     }
+
+    scrollToActive();
 
     // Load initial page in iframe
     const iframe = document.getElementById("content-frame");

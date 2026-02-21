@@ -355,6 +355,22 @@ body.viewer hr {
     margin: 32px 0;
 }
 
+/* Example tables with thumbnails */
+body.viewer table img {
+    border-radius: 6px;
+    margin-bottom: 8px;
+    border: 1px solid var(--border);
+}
+
+body.viewer td {
+    vertical-align: top;
+}
+
+body.viewer td code {
+    font-size: 0.85em;
+    white-space: nowrap;
+}
+
 /* highlight.js overrides for one-dark style consistency */
 .hljs {
     background: #282c34 !important;

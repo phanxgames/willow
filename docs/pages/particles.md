@@ -100,3 +100,14 @@ cfg := willow.EmitterConfig{
     // ...
 }
 ```
+
+## Next Steps
+
+- [Mesh & Distortion](?page=meshes) — deformable vertex geometry and distortion grids
+- [Ropes](?page=ropes) — textured strips along curved paths
+
+## Related
+
+- [Tweens & Animation](?page=tweens-and-animation) — animate emitter properties
+- [Solid-Color Sprites](?page=solid-color-sprites) — WhitePixel used by untextured particles
+- [Nodes](?page=nodes) — particle emitter is a node type

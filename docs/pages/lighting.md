@@ -154,3 +154,13 @@ scene.SetUpdateFunc(func() error {
     return nil
 })
 ```
+
+## Next Steps
+
+- [Clipping & Masks](?page=clipping-and-masks) — alpha-based masking and clipping
+- [Post-Processing Filters](?page=post-processing-filters) — shader-based visual effects
+
+## Related
+
+- [Offscreen Rendering](?page=offscreen-rendering) — light layer uses a RenderTexture internally
+- [Sprites & Atlas](?page=sprites-and-atlas) — texture lights use atlas regions

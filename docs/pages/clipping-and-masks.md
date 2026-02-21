@@ -80,3 +80,14 @@ Or use tweens:
 ```go
 tween := willow.TweenScale(mask, 2, 2, 1.0, ease.InOutQuad)
 ```
+
+## Next Steps
+
+- [Post-Processing Filters](?page=post-processing-filters) — shader-based visual effects
+- [CacheAsTexture](?page=cache-as-texture) — cache static masked content
+
+## Related
+
+- [Solid-Color Sprites](?page=solid-color-sprites) — WhitePixel sprites for geometric masks
+- [Tweens & Animation](?page=tweens-and-animation) — animate mask transforms
+- [Nodes](?page=nodes) — blend modes including `BlendErase` and `BlendMask`
