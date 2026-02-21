@@ -178,9 +178,9 @@ func (n *Node) SetAlpha(a float64) {
 	invalidateAncestorCache(n)
 }
 
-// MarkDirty marks the node's transform and alpha as dirty, forcing recomputation
+// Invalidate marks the node's transform and alpha as dirty, forcing recomputation
 // on the next frame. Useful after bulk-setting fields directly.
-func (n *Node) MarkDirty() {
+func (n *Node) Invalidate() {
 	n.transformDirty = true
 	n.alphaDirty = true
 	invalidateAncestorCache(n)

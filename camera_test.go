@@ -457,17 +457,17 @@ func TestNoCameraImplicitIdentity(t *testing.T) {
 	scene.Draw(screen) // Should not panic — uses implicit identity camera
 }
 
-// --- Camera MarkDirty ---
+// --- Camera Invalidate ---
 
-func TestCameraMarkDirty(t *testing.T) {
+func TestCameraInvalidate(t *testing.T) {
 	cam := newCamera(Rect{X: 0, Y: 0, Width: 800, Height: 600})
 	cam.computeViewMatrix()
 	if cam.dirty {
 		t.Error("camera should not be dirty after computeViewMatrix")
 	}
-	cam.MarkDirty()
+	cam.Invalidate()
 	if !cam.dirty {
-		t.Error("camera should be dirty after MarkDirty")
+		t.Error("camera should be dirty after Invalidate")
 	}
 }
 

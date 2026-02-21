@@ -66,7 +66,7 @@ func main() {
 	cam := scene.NewCamera(willow.Rect{X: 0, Y: 0, Width: screenW, Height: screenH})
 	cam.X = screenW / 2
 	cam.Y = screenH / 2
-	cam.MarkDirty()
+	cam.Invalidate()
 
 	// Create one filter instance per panel (ColorMatrix demos each need their own).
 	brightness := willow.NewColorMatrixFilter()

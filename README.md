@@ -50,7 +50,7 @@ Inspired by [Starling](https://gamua.com/starling/), Flash display lists, and [P
 ## What Willow Is Not
 
 - Not a full game engine  -  no built-in physics, networking, or asset pipelines
-- Not a UI layout framework (a companion `willow-ui` library is planned)
+- Not a UI layout framework (a companion `willowui` library is planned)
 - Not a replacement for Ebitengine  -  it builds on top of it
 
 Willow focuses on structured rendering and scene composition. You bring the gameplay and domain logic.
@@ -195,7 +195,7 @@ Benchmark suite included: `go test -bench . -benchmem`
 ## Roadmap
 
 - **Dynamic atlas packing**  -  Runtime `Atlas.Add(name, img)` for lazy asset loading. Shelf/guillotine packing into existing atlas pages to preserve batching.
-- UI widget layer (buttons, text input, layout, focus traversal) as a separate companion library (willow-ui)
+- UI widget layer (buttons, text input, layout, focus traversal) as a separate companion library (willowui)
 - Example projects and starter templates
 - Comprehensive API documentation and guides
 - Tutorials and integration walkthroughs

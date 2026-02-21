@@ -84,7 +84,7 @@ func main() {
 	cam := scene.NewCamera(willow.Rect{X: 0, Y: 0, Width: screenW, Height: screenH})
 	cam.X = screenW / 2
 	cam.Y = screenH / 2
-	cam.MarkDirty()
+	cam.Invalidate()
 
 	grid, node := willow.NewDistortionGrid("water", waterImg, totalCols, totalRows)
 	// Shift the mesh so the buffer tiles sit off-screen, centering the

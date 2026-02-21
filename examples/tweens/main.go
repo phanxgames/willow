@@ -127,20 +127,20 @@ func (d *demo) resetPositions() {
 
 	d.posNode.X = startX
 	d.posNode.Y = cy
-	d.posNode.MarkDirty()
+	d.posNode.Invalidate()
 
 	d.scaleNode.ScaleX = 2
 	d.scaleNode.ScaleY = 2
-	d.scaleNode.MarkDirty()
+	d.scaleNode.Invalidate()
 
 	d.rotNode.Rotation = 0
-	d.rotNode.MarkDirty()
+	d.rotNode.Invalidate()
 
 	d.alphaNode.Alpha = 1
-	d.alphaNode.MarkDirty()
+	d.alphaNode.Invalidate()
 
 	d.colorNode.Color = willow.Color{R: 1, G: 1, B: 1, A: 1}
-	d.colorNode.MarkDirty()
+	d.colorNode.Invalidate()
 }
 
 func (d *demo) startTweens() {

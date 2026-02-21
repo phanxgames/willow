@@ -77,10 +77,10 @@ type glyphPos struct {
 	page   uint16
 }
 
-// MarkDirty invalidates the cached layout and TTF image, forcing recomputation
+// Invalidate invalidates the cached layout and TTF image, forcing recomputation
 // on the next frame. Call this after changing Content, Font, WrapWidth, Align,
 // LineHeight, Color, or Outline at runtime.
-func (tb *TextBlock) MarkDirty() {
+func (tb *TextBlock) Invalidate() {
 	tb.layoutDirty = true
 	tb.ttfDirty = true
 }

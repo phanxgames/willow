@@ -40,7 +40,7 @@ func main() {
 	cam := scene.NewCamera(willow.Rect{X: 0, Y: 0, Width: screenW, Height: screenH})
 	cam.X = (mapWidth * tileSize) / 2
 	cam.Y = (mapHeight * tileSize) / 2
-	cam.MarkDirty()
+	cam.Invalidate()
 
 	// Cache the tilemap's render commands so camera panning replays them
 	// via delta remap instead of re-traversing 900 nodes every frame.
@@ -75,7 +75,7 @@ func main() {
 	scene.Root().OnDrag = func(ctx willow.DragContext) {
 		cam.X -= ctx.ScreenDeltaX / cam.Zoom
 		cam.Y -= ctx.ScreenDeltaY / cam.Zoom
-		cam.MarkDirty()
+		cam.Invalidate()
 	}
 
 	if err := willow.Run(scene, willow.RunConfig{

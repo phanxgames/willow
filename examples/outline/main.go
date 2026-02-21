@@ -96,7 +96,7 @@ func main() {
 		outline.Color = c
 		inline.Color = c
 		for _, n := range filteredNodes {
-			n.MarkDirty()
+			n.Invalidate()
 		}
 	}
 

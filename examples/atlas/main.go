@@ -173,7 +173,7 @@ func main() {
 		// Rescale: whelp is 128×128, we still want 80×80 on screen.
 		ctx.Node.ScaleX = displaySize / whelpW
 		ctx.Node.ScaleY = displaySize / whelpH
-		ctx.Node.MarkDirty()
+		ctx.Node.Invalidate()
 
 		ctx.Node.OnClick = nil // one-shot
 	}

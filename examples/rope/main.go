@@ -43,7 +43,7 @@ func (d *demo) update() error {
 	orbitR := 80.0
 	d.orbiter.X = mx + math.Cos(d.time*1.2)*orbitR
 	d.orbiter.Y = my + math.Sin(d.time*1.2)*orbitR*0.6
-	d.orbiter.MarkDirty()
+	d.orbiter.Invalidate()
 
 	// Update the bound Vec2s — rope.Update() reads these by reference.
 	d.start.X = d.handleA.X
@@ -63,7 +63,7 @@ func main() {
 	cam := scene.NewCamera(willow.Rect{X: 0, Y: 0, Width: screenW, Height: screenH})
 	cam.X = screenW / 2
 	cam.Y = screenH / 2
-	cam.MarkDirty()
+	cam.Invalidate()
 
 	// Create a solid-color rope texture. The image must be large enough to
 	// cover the UV range (SrcX = cumulative path length). 512px covers most
@@ -154,7 +154,7 @@ func makeHandle(name string, c willow.Color) *willow.Node {
 	n.OnDrag = func(ctx willow.DragContext) {
 		n.X += ctx.DeltaX
 		n.Y += ctx.DeltaY
-		n.MarkDirty()
+		n.Invalidate()
 	}
 
 	return n

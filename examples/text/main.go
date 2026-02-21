@@ -201,7 +201,7 @@ func main() {
 func (d *demo) update() error {
 	d.frameNum++
 	d.counter.TextBlock.Content = fmt.Sprintf("Frame: %d", d.frameNum)
-	d.counter.TextBlock.MarkDirty()
+	d.counter.TextBlock.Invalidate()
 	return nil
 }
 

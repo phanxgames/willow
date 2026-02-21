@@ -43,7 +43,7 @@ func main() {
 	cam.X = (mapWidth * tileSize) / 2
 	cam.Y = (mapHeight * tileSize) / 2
 	cam.SetBounds(willow.Rect{X: 0, Y: 0, Width: mapWidth * tileSize, Height: mapHeight * tileSize})
-	cam.MarkDirty()
+	cam.Invalidate()
 
 	// Build TextureRegion lookup from the tileset image.
 	// GID 0 = empty, GIDs 1..16 map to the 16 tiles in the 4x4 sheet.
@@ -117,7 +117,7 @@ func main() {
 		cam.X -= ctx.ScreenDeltaX / cam.Zoom
 		cam.Y -= ctx.ScreenDeltaY / cam.Zoom
 		cam.ClampToBounds()
-		cam.MarkDirty()
+		cam.Invalidate()
 	}
 
 	// Debug overlay: camera coordinates and tile position at the bottom of the screen.

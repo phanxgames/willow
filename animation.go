@@ -46,7 +46,7 @@ func (g *TweenGroup) Update(dt float32) {
 	g.Done = allDone
 
 	if g.target != nil {
-		g.target.MarkDirty()
+		g.target.Invalidate()
 	}
 }
 

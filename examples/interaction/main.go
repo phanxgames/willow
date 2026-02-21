@@ -75,7 +75,7 @@ func makeBox(name string, primary, alt willow.Color) *willow.Node {
 	node.OnDrag = func(ctx willow.DragContext) {
 		node.X += ctx.DeltaX
 		node.Y += ctx.DeltaY
-		node.MarkDirty()
+		node.Invalidate()
 	}
 
 	return node

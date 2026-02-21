@@ -23,7 +23,7 @@
 //		dt := float32(1.0 / float64(ebiten.TPS()))
 //		myTween.Update(dt)
 //		hero.X += speed
-//		hero.MarkDirty()
+//		hero.Invalidate()
 //		return nil
 //	})
 //
@@ -86,11 +86,11 @@
 // SkewX, SkewY, PivotX, PivotY. World transforms are computed lazily via
 // dirty-flag propagation — static subtrees skip recomputation entirely.
 //
-// Call [Node.MarkDirty] after changing a transform field at runtime
+// Call [Node.Invalidate] after changing a transform field at runtime
 // (X, Y, Rotation, etc.) to ensure the change takes effect:
 //
 //	sprite.X += 5
-//	sprite.MarkDirty()
+//	sprite.Invalidate()
 //
 // PivotX and PivotY set the transform origin as a fraction of the node's
 // size (0.5, 0.5 = center). By default pivots are (0, 0) meaning the
@@ -104,7 +104,7 @@
 //	cam := scene.NewCamera(willow.Rect{X: 0, Y: 0, Width: 640, Height: 480})
 //	cam.X = worldCenterX
 //	cam.Y = worldCenterY
-//	cam.MarkDirty()
+//	cam.Invalidate()
 //
 // Cameras support smooth follow, animated scroll-to with 45+ easing
 // functions, zoom, rotation, bounds clamping, and frustum culling.
@@ -129,7 +129,7 @@
 //	btn.OnDrag = func(ctx willow.DragContext) {
 //		btn.X += ctx.DeltaX
 //		btn.Y += ctx.DeltaY
-//		btn.MarkDirty()
+//		btn.Invalidate()
 //	}
 //
 // Available callbacks: OnPointerDown, OnPointerUp, OnPointerMove,

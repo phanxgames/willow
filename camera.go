@@ -243,8 +243,8 @@ func (c *Camera) VisibleBounds() Rect {
 	return Rect{X: minX, Y: minY, Width: maxX - minX, Height: maxY - minY}
 }
 
-// MarkDirty forces a recomputation of the view matrix.
-func (c *Camera) MarkDirty() {
+// Invalidate forces a recomputation of the view matrix.
+func (c *Camera) Invalidate() {
 	c.dirty = true
 }
 

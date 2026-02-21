@@ -26,7 +26,7 @@ type bouncer struct {
 func (b *bouncer) update() error {
 	b.node.X += b.dx
 	b.node.Y += b.dy
-	b.node.MarkDirty()
+	b.node.Invalidate()
 
 	if b.node.X < 0 || b.node.X+spriteW > screenW {
 		b.dx = -b.dx

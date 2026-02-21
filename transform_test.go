@@ -308,9 +308,9 @@ func TestSettersDirty(t *testing.T) {
 	}
 	n.alphaDirty = false
 
-	n.MarkDirty()
+	n.Invalidate()
 	if !n.transformDirty {
-		t.Error("MarkDirty should set dirty")
+		t.Error("Invalidate should set dirty")
 	}
 }
 
