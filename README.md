@@ -16,7 +16,7 @@ Inspired by [Starling](https://gamua.com/starling/), Flash display lists, and [P
   <img src="docs/gif/watermesh.gif" alt="Watermesh demo" width="400">
 </p>
 
-> **New here?** Check out the [examples](examples/)  -  runnable demos with no external assets required.
+> **New here?** Check out the [Getting Started Guide](https://phanxgames.github.io/willow/)  -  tutorials, examples, and everything you need to start building with Willow.
 
 ---
 
