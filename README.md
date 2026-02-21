@@ -4,7 +4,10 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/phanxgames/willow)](https://goreportcard.com/report/github.com/phanxgames/willow)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A retained-mode 2D scene graph, interaction layer, and render compiler for [Ebitengine](https://ebitengine.org).
+A retained-mode 2D game framework for [Ebitengine](https://ebitengine.org)  -  scene graph, batching, cameras, interaction, and effects.
+Inspired by [Starling](https://gamua.com/starling/), Flash display lists, and [PixiJS](https://pixijs.com/)  -  adapted for Go's strengths.
+
+**Status:** Functional and actively developed. Core systems are working and used across all included examples. API may change before `v1.0.0`.
 
 <p align="center">
   <img src="examples/_assets/gif/shapes.gif" alt="Shapes demo" width="400">
@@ -13,19 +16,20 @@ A retained-mode 2D scene graph, interaction layer, and render compiler for [Ebit
   <img src="examples/_assets/gif/watermesh.gif" alt="Watermesh demo" width="400">
 </p>
 
-> **New here?** Check out the [examples](examples/) — runnable demos with no external assets required.
+> **New here?** Check out the [examples](examples/)  -  runnable demos with no external assets required.
 
 ---
 
 ## What is Willow?
 
-Willow is a structured foundation for 2D applications built on Ebitengine. It provides the scene graph, input handling, sprite batching, and rendering pipeline that every non-trivial 2D project needs - packaged as a single, focused library.
+Willow is a 2D game framework built on Ebitengine. It utlizies the retained-mode design pattern, which means you create a tree of nodes representing your game objects, and Willow handles passing the draw commands down to the Ebitengine.
+A main focus of Willow is performance - it is designed to minimize heap allocations and maximize batching, with features like subtree command caching for static content, and a zero-allocation-per-frame contract on the hot path. While managing the display tree does have a slight runtime cost, in some instances Willow can be faster than raw Ebitengine draw calls due to better batching and caching strategies.
 
 It sits between Ebitengine and your game:
 
 ```
 Your Game             - gameplay, content, logic
-willow                - scene graph, rendering, interaction
+Willow                - scene graph, rendering, interaction
 Ebitengine            - GPU backend, window, audio, platform
 ```
 
@@ -37,19 +41,40 @@ Ebitengine            - GPU backend, window, audio, platform
 
 Willow exists so you don't have to rebuild that foundation every time.
 
-It was created with a specific belief: **Go deserves a clean, structured way to build 2D applications.** Not a heavy framework that dictates how you work, but a transparent layer that handles the tedious parts and gets out of the way.
+It was created with a specific belief: **Go deserves a clean, structured way to build 2D games.** A framework that handles the rendering infrastructure so you can focus on gameplay.
 
-Inspired by [Starling](https://gamua.com/starling/), Flash display lists, and [PixiJS](https://pixijs.com/) - scene graph architectures that powered millions of 2D applications - adapted for Go's strengths: simplicity, performance, and zero magic.
+Inspired by [Starling](https://gamua.com/starling/), Flash display lists, and [PixiJS](https://pixijs.com/)  -  scene graph architectures that powered millions of 2D games  -  adapted for Go's strengths: simplicity and performance.
+
+---
+
+## What Willow Is Not
+
+- Not a full game engine  -  no built-in physics, networking, or asset pipelines
+- Not a UI layout framework (a companion `willow-ui` library is planned)
+- Not a replacement for Ebitengine  -  it builds on top of it
+
+Willow focuses on structured rendering and scene composition. You bring the gameplay and domain logic.
 
 ---
 
 ## Goals
 
-1. **Structure without handcuffs.** Willow provides hierarchy, transforms, and batching. It does not impose game architecture. Any genre, any pattern, any scale.
+1. **Structure without handcuffs.** Willow provides hierarchy, transforms, and batching without imposing game architecture. Any genre, any pattern, any scale.
 2. **Performance as a contract.** Zero heap allocations per frame on the hot path. 10,000 sprites at 120+ FPS on desktop, 60+ FPS on mobile and web. Verified with compiler escape analysis and benchmark suites.
-3. **Wrap Ebitengine, never fight it.** Willow uses Ebitengine's draw calls, image types, and threading model directly.
-4. **No genre bias.** Willow is for any 2D project - games, tools, visualizations, simulations.
-5. **Minimal public API.** Every exported symbol earns its place. Fewer concepts, less to learn, less to break.
+3. **Wrap Ebitengine, never fight it.** Willow uses Ebitengine's lifecycle hooks, image types, and threading model directly.
+4. **Minimal public API.** Every exported symbol earns its place. Fewer concepts, less to learn, less to break.
+5. **Cross Platform.** Windows, macOS, Linux, iOS, Android, WebAssembly  -  wherever Ebitengine runs.
+
+---
+
+## Use Cases
+
+Willow is well suited for:
+
+- 2D games requiring structured layering and scene composition
+- Games with worlds with large tile maps, cameras, and movement
+- Game tooling and level editors built on a display tree
+- Prototyping game rendering architectures on top of Ebitengine
 
 ---
 
@@ -59,7 +84,7 @@ Inspired by [Starling](https://gamua.com/starling/), Flash display lists, and [P
 go get github.com/phanxgames/willow@latest
 ```
 
-For quick setup, call `willow.Run(scene, config)` and Willow handles the window and game loop. For full control, implement `ebiten.Game` yourself and call `scene.Update()` and `scene.Draw(screen)` directly — both paths are first-class.
+For quick setup, call `willow.Run(scene, config)` and Willow handles the window and game loop. For full control, implement `ebiten.Game` yourself and call `scene.Update()` and `scene.Draw(screen)` directly  -  both paths are first-class.
 
 ```go
 package main
@@ -159,7 +184,7 @@ Willow is designed around a zero-allocation-per-frame contract on the hot path:
 | Manual cache, camera scrolling | ~39 &mu;s | ~125x faster |
 | Manual cache, 100 animated tile UV swaps | ~1.97 ms | ~2.5x faster |
 | Auto cache, 1% of children moving | ~4.0 ms | ~1.2x faster |
-| No cache (baseline) | ~4.9 ms | — |
+| No cache (baseline) | ~4.9 ms |  -  |
 
 The cache is per-container, and will be invalidated if a child within the container moves. It is recommended to separate static content (tilemaps, UI panels) from dynamic content (players, projectiles) into different containers for best results.
 
@@ -169,8 +194,7 @@ Benchmark suite included: `go test -bench . -benchmem`
 
 ## Roadmap
 
-- **Spatial chunking for CacheAsTree** — Grid-based chunk culling so large tilemaps (40K+ tiles) only replay visible cached commands instead of the full set. Build-time spatial indexing with O(visible) replay cost. Designed for camera-panning scenarios where CacheAsTree captures the entire map but only a viewport-sized portion is on screen. See `spec/_archive/cache-as-tree-culling.md` for the full design.
-- **Dynamic atlas packing** — Runtime `Atlas.Add(name, img)` for lazy asset loading. Shelf/guillotine packing into existing atlas pages to preserve batching.
+- **Dynamic atlas packing**  -  Runtime `Atlas.Add(name, img)` for lazy asset loading. Shelf/guillotine packing into existing atlas pages to preserve batching.
 - UI widget layer (buttons, text input, layout, focus traversal) as a separate companion library (willow-ui)
 - Example projects and starter templates
 - Comprehensive API documentation and guides
@@ -180,17 +204,17 @@ Benchmark suite included: `go test -bench . -benchmem`
 
 ---
 
-## Requirements
+## Built with
 
 - **Go** 1.24+
 - **Ebitengine** v2.9+
-- All Ebitengine-supported platforms: Windows, macOS, Linux, iOS, Android, WebAssembly
+- Currently tested on: macOS and WebAssembly
 
 ---
 
 ## Contributing
 
-Contributions are welcome. Please open an issue to discuss proposed changes before submitting a pull request.
+Contributions are welcome. Please a pull request and ensure tests pass. For major changes, open an issue first to discuss the design and implementation.
 
 ---
 
