@@ -42,6 +42,8 @@ func (s *Scene) submitBatches(target *ebiten.Image) {
 			s.submitParticles(target, cmd, &op)
 		case CommandMesh:
 			s.submitMesh(target, cmd)
+		case CommandTilemap:
+			s.submitTilemap(target, cmd)
 		}
 	}
 }
@@ -199,6 +201,17 @@ func (s *Scene) submitParticles(target *ebiten.Image, cmd *RenderCommand, op *eb
 	}
 }
 
+// submitTilemap draws a tilemap layer command using DrawTriangles.
+func (s *Scene) submitTilemap(target *ebiten.Image, cmd *RenderCommand) {
+	if cmd.tilemapImage == nil || len(cmd.tilemapVerts) == 0 || len(cmd.tilemapInds) == 0 {
+		return
+	}
+	var triOp ebiten.DrawTrianglesOptions
+	triOp.Blend = cmd.BlendMode.EbitenBlend()
+	triOp.ColorScaleMode = ebiten.ColorScaleModePremultipliedAlpha
+	target.DrawTriangles(cmd.tilemapVerts, cmd.tilemapInds, cmd.tilemapImage, &triOp)
+}
+
 // submitMesh draws a mesh command using DrawTriangles.
 func (s *Scene) submitMesh(target *ebiten.Image, cmd *RenderCommand) {
 	if cmd.meshImage == nil || len(cmd.meshVerts) == 0 || len(cmd.meshInds) == 0 {
@@ -269,6 +282,11 @@ func (s *Scene) submitBatchesCoalesced(target *ebiten.Image) {
 			s.flushSpriteBatch(target, currentKey)
 			inRun = false
 			s.submitMesh(target, cmd)
+
+		case CommandTilemap:
+			s.flushSpriteBatch(target, currentKey)
+			inRun = false
+			s.submitTilemap(target, cmd)
 		}
 	}
 
@@ -290,10 +308,10 @@ func (s *Scene) appendSpriteQuad(cmd *RenderCommand) {
 	a, b, c, d, tx, ty := t[0], t[1], t[2], t[3], t[4], t[5]
 
 	// Precompute local corner positions: TL, TR, BL, BR.
-	x0, y0 := ox, oy       // TL
-	x1, y1 := ox+w, oy     // TR
-	x2, y2 := ox, oy+h     // BL
-	x3, y3 := ox+w, oy+h   // BR
+	x0, y0 := ox, oy     // TL
+	x1, y1 := ox+w, oy   // TR
+	x2, y2 := ox, oy+h   // BL
+	x3, y3 := ox+w, oy+h // BR
 
 	// Source UVs (pixel coordinates on the atlas page).
 	var sx0, sy0, sx1, sy1, sx2, sy2, sx3, sy3 float32
@@ -302,19 +320,19 @@ func (s *Scene) appendSpriteQuad(cmd *RenderCommand) {
 		ry := float32(r.Y)
 		rh := float32(r.Height) // stored width in atlas
 		rw := float32(r.Width)  // stored height in atlas
-		sx0, sy0 = rx+rh, ry       // TL
-		sx1, sy1 = rx+rh, ry+rw    // TR
-		sx2, sy2 = rx, ry           // BL
-		sx3, sy3 = rx, ry+rw        // BR
+		sx0, sy0 = rx+rh, ry    // TL
+		sx1, sy1 = rx+rh, ry+rw // TR
+		sx2, sy2 = rx, ry       // BL
+		sx3, sy3 = rx, ry+rw    // BR
 	} else {
 		rx := float32(r.X)
 		ry := float32(r.Y)
 		rw := float32(r.Width)
 		rh := float32(r.Height)
-		sx0, sy0 = rx, ry           // TL
-		sx1, sy1 = rx+rw, ry       // TR
-		sx2, sy2 = rx, ry+rh       // BL
-		sx3, sy3 = rx+rw, ry+rh    // BR
+		sx0, sy0 = rx, ry       // TL
+		sx1, sy1 = rx+rw, ry    // TR
+		sx2, sy2 = rx, ry+rh    // BL
+		sx3, sy3 = rx+rw, ry+rh // BR
 	}
 
 	// Premultiplied RGBA. Zero-color sentinel → opaque white.

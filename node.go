@@ -219,6 +219,12 @@ type Node struct {
 	// OnUpdate is called once per tick during Scene.Update if set.
 	OnUpdate func(dt float64)
 
+	// customEmit, when non-nil, is called during traverse instead of the
+	// normal command-emit path. Used by TileMapLayer to emit
+	// CommandTilemap commands. The callback receives the scene and a
+	// pointer to the current treeOrder counter.
+	customEmit func(s *Scene, treeOrder *int)
+
 	// ---- COLD: hit testing ----
 
 	// Interactable controls whether this node responds to pointer events.
@@ -732,6 +738,7 @@ func (n *Node) dispose() {
 	n.cacheTreeDirty = false
 	n.cachedCommands = nil
 	n.customImage = nil
+	n.customEmit = nil
 	n.MeshImage = nil
 	n.transformedVerts = nil
 	n.Emitter = nil

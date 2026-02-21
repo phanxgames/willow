@@ -13,6 +13,7 @@ const (
 	CommandSprite   CommandType = iota // DrawImage
 	CommandMesh                        // DrawTriangles
 	CommandParticle                    // particle quads (batches as sprites)
+	CommandTilemap                     // DrawTriangles for tilemap layers
 )
 
 // color32 is a compact RGBA color using float32, for render commands only.
@@ -54,6 +55,11 @@ type RenderCommand struct {
 	// emittingNodeID is set during CacheAsTree builds to track which Node
 	// emitted this command. Only populated when building under a cached ancestor.
 	emittingNodeID uint32
+
+	// Tilemap fields (CommandTilemap only — slice headers, not copies).
+	tilemapVerts []ebiten.Vertex
+	tilemapInds  []uint16
+	tilemapImage *ebiten.Image
 }
 
 // identityTransform32 is the identity affine matrix as float32.
@@ -100,6 +106,26 @@ func (s *Scene) traverse(n *Node, treeOrder *int) {
 	// to an offscreen image and emit a single directImage command.
 	if !culled && (n.mask != nil || n.cacheEnabled || len(n.Filters) > 0) {
 		s.renderSpecialNode(n, treeOrder)
+		return
+	}
+
+	// Custom emit hook (used by TileMapLayer for CommandTilemap).
+	if n.customEmit != nil && !culled {
+		n.customEmit(s, treeOrder)
+		s.commandsDirtyThisFrame = true
+		// Still traverse children (sandwich layers).
+		if len(n.children) > 0 {
+			children := n.children
+			if !n.childrenSorted {
+				s.rebuildSortedChildren(n)
+			}
+			if n.sortedChildren != nil {
+				children = n.sortedChildren
+			}
+			for _, child := range children {
+				s.traverse(child, treeOrder)
+			}
+		}
 		return
 	}
 

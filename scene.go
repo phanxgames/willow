@@ -68,7 +68,8 @@ type Scene struct {
 	// black), the screen is not filled, resulting in a black background.
 	ClearColor Color
 
-	updateFunc func() error // user callback set via SetUpdateFunc
+	updateFunc   func() error               // user callback set via SetUpdateFunc
+	postDrawFunc func(screen *ebiten.Image) // user callback after Draw, set via SetPostDrawFunc
 
 	// Cameras
 	cameras []*Camera
@@ -156,6 +157,13 @@ func (s *Scene) SetUpdateFunc(fn func() error) {
 	s.updateFunc = fn
 }
 
+// SetPostDrawFunc registers a callback that is called after [Scene.Draw]
+// (and after the FPS widget) when the scene is run via [Run]. Use it for
+// screen-space debug overlays (e.g. ebitenutil.DebugPrintAt). Pass nil to clear.
+func (s *Scene) SetPostDrawFunc(fn func(screen *ebiten.Image)) {
+	s.postDrawFunc = fn
+}
+
 // Run is a convenience entry point that creates an Ebitengine game loop around
 // the given Scene. It configures the window and calls [ebiten.RunGame].
 //
@@ -212,6 +220,9 @@ func (g *gameShell) Draw(screen *ebiten.Image) {
 		var op ebiten.DrawImageOptions
 		op.GeoM.Translate(g.fpsWid.X, g.fpsWid.Y)
 		screen.DrawImage(g.fpsWid.CustomImage(), &op)
+	}
+	if g.scene.postDrawFunc != nil {
+		g.scene.postDrawFunc(screen)
 	}
 }
 

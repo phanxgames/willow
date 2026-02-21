@@ -99,6 +99,16 @@ func (c *Camera) ClearBounds() {
 	c.BoundsEnabled = false
 }
 
+// ClampToBounds immediately clamps the camera position so the visible area
+// stays within Bounds. Call this after modifying X/Y directly (e.g. in a
+// drag callback) to prevent a single frame where the camera sees outside
+// the bounds. No-op if BoundsEnabled is false.
+func (c *Camera) ClampToBounds() {
+	if c.BoundsEnabled {
+		c.clampToBounds()
+	}
+}
+
 // update advances follow, scroll, and bounds clamping. Called from Scene.Update().
 func (c *Camera) update(dt float32) {
 	prevX, prevY := c.X, c.Y
