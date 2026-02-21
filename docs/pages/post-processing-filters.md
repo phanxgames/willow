@@ -1,5 +1,9 @@
 # Post-Processing Filters
 
+<p align="center">
+  <img src="gif/shaders.gif" alt="Shaders demo" width="400">
+</p>
+
 Filters are post-processing effects applied to individual nodes. When a node has filters, it is rendered to an offscreen buffer, the filters are applied in sequence (ping-ponging between buffers), and the result is composited back.
 
 ## Filter Interface

@@ -1,5 +1,9 @@
 # Tilemap Viewport
 
+<p align="center">
+  <img src="gif/tilemap.gif" alt="Tilemap demo" width="400">
+</p>
+
 Willow provides `TileMapViewport` for efficient rendering of large tile-based maps. Only visible tiles are rendered, with buffering for smooth camera scrolling.
 
 ## TileMapViewport

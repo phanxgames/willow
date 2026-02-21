@@ -1,5 +1,9 @@
 # Particles
 
+<p align="center">
+  <img src="gif/particles.gif" alt="Particles demo" width="400">
+</p>
+
 Willow includes a CPU-simulated particle system. Particles are configured via `EmitterConfig` and attached to the scene graph as `NodeTypeParticleEmitter` nodes.
 
 ## EmitterConfig

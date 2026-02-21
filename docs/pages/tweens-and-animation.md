@@ -1,5 +1,9 @@
 # Tweens & Animation
 
+<p align="center">
+  <img src="gif/tweens.gif" alt="Tweens demo" width="400">
+</p>
+
 Willow provides tween-based animation through `TweenGroup`, powered by the [gween](https://github.com/tanema/gween) easing library.
 
 ## Tween Functions

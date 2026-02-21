@@ -133,6 +133,15 @@ This uses `willow.WhitePixel` (a shared 1x1 white image) internally. The `Color`
 
 ## Examples
 
+<p align="center">
+  <img src="gif/shapes.gif" alt="Shapes demo" width="400">
+  <img src="gif/tweens.gif" alt="Tweens demo" width="400">
+  <img src="gif/shaders.gif" alt="Shaders demo" width="400">
+  <img src="gif/masks.gif" alt="Masks demo" width="400">
+  <img src="gif/watermesh.gif" alt="Water mesh demo" width="400">
+  <img src="gif/tilemap.gif" alt="Tilemap demo" width="400">
+</p>
+
 Runnable examples are included in the [examples/](https://github.com/phanxgames/willow/tree/main/examples) directory:
 
 ```bash

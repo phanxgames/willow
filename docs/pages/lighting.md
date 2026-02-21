@@ -1,5 +1,9 @@
 # Lighting
 
+<p align="center">
+  <img src="gif/lights.gif" alt="Lighting demo" width="400">
+</p>
+
 `LightLayer` provides a simple 2D lighting system. It renders to an offscreen texture and composites over the scene using multiply blending — areas without lights appear dark.
 
 ## Creating a Light Layer

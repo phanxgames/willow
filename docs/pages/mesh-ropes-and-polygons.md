@@ -1,5 +1,9 @@
 # Mesh, Ropes & Polygons
 
+<p align="center">
+  <img src="gif/watermesh.gif" alt="Water mesh demo" width="400">
+</p>
+
 Willow supports custom vertex geometry through mesh nodes, plus high-level helpers for ropes, distortion grids, and polygons.
 
 ## Raw Mesh

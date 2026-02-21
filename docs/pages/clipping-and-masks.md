@@ -1,5 +1,9 @@
 # Clipping & Masks
 
+<p align="center">
+  <img src="gif/masks.gif" alt="Masks demo" width="400">
+</p>
+
 Masks let you clip a node's rendering to the alpha channel of another node. The mask node is not part of the scene tree — its transforms are relative to the masked node.
 
 ## Setting a Mask

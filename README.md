@@ -10,10 +10,10 @@ Inspired by [Starling](https://gamua.com/starling/), Flash display lists, and [P
 **Status:** Functional and actively developed. Core systems are working and used across all included examples. API may change before `v1.0.0`.
 
 <p align="center">
-  <img src="examples/_assets/gif/shapes.gif" alt="Shapes demo" width="400">
-  <img src="examples/_assets/gif/masks.gif" alt="Masks demo" width="400">
-  <img src="examples/_assets/gif/shaders.gif" alt="Shaders demo" width="400">
-  <img src="examples/_assets/gif/watermesh.gif" alt="Watermesh demo" width="400">
+  <img src="docs/gif/shapes.gif" alt="Shapes demo" width="400">
+  <img src="docs/gif/masks.gif" alt="Masks demo" width="400">
+  <img src="docs/gif/shaders.gif" alt="Shaders demo" width="400">
+  <img src="docs/gif/watermesh.gif" alt="Watermesh demo" width="400">
 </p>
 
 > **New here?** Check out the [examples](examples/)  -  runnable demos with no external assets required.
@@ -144,7 +144,7 @@ go run ./examples/watermesh    # Water surface with per-vertex wave animation
 
 ## Documentation
 
-- **[Willow Docs](https://phanxgames.github.io/willow/docs/)** - Guides, tutorials, and reference
+- **[Willow Docs](https://phanxgames.github.io/willow/)** - Guides, tutorials, and reference
 - **[API Reference](https://pkg.go.dev/github.com/phanxgames/willow)** - Full API documentation on pkg.go.dev
 
 ---

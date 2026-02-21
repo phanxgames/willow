@@ -1,5 +1,9 @@
 # Transforms
 
+<p align="center">
+  <img src="gif/shapes.gif" alt="Shapes demo" width="400">
+</p>
+
 Every node has a local transform defined by position, scale, rotation, skew, and pivot. Willow computes world transforms by multiplying parent and child matrices, using dirty flags to avoid unnecessary recomputation.
 
 ## Coordinate System
