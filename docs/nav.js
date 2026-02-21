@@ -60,6 +60,7 @@ const NAV_SECTIONS = [
         title: "Reference",
         items: [
             { label: "API Reference", href: "https://pkg.go.dev/github.com/phanxgames/willow" },
+            { label: "GitHub", href: "https://github.com/phanxgames/willow" },
         ]
     }
 ];

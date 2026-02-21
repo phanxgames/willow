@@ -7,6 +7,8 @@
   <img src="gif/watermesh.gif" alt="Watermesh demo" width="300">
 </p>
 
+**[GitHub](https://github.com/phanxgames/willow)** | **[API Reference](https://pkg.go.dev/github.com/phanxgames/willow)**
+
 ## Installation
 
 ```bash
