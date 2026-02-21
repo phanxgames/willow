@@ -101,7 +101,13 @@ const NAV_TABS = [
         ]},
     ]},
     { id: "demos", label: "Demos", sections: [
-        { title: "Demos", items: [{ label: "Demos (Coming Soon)", page: "demos" }] }
+        { title: "Stress Tests", items: [
+            { label: "10k Sprites", page: "demos", anchor: "10k-sprites" },
+        ]},
+        { title: "Interactive", items: [
+            { label: "Physics Shapes", page: "demos", anchor: "physics-shapes" },
+            { label: "Rope Garden", page: "demos", anchor: "rope-garden" },
+        ]},
     ]},
     { id: "tutorials", label: "Tutorials", sections: [
         { title: "Tutorials", items: [{ label: "Tutorials (Coming Soon)", page: "tutorials" }] }
