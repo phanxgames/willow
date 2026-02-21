@@ -1,5 +1,12 @@
 # Getting Started
 
+<p align="center">
+  <img src="gif/shapes.gif" alt="Shapes demo" width="300">
+  <img src="gif/masks.gif" alt="Masks demo" width="300">
+  <img src="gif/shaders.gif" alt="Shaders demo" width="300">
+  <img src="gif/watermesh.gif" alt="Watermesh demo" width="300">
+</p>
+
 ## Installation
 
 ```bash
