@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Willow Docs</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
+</head>
+<body class="viewer">
+    <div id="content">
+        <p>Loading...</p>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/languages/go.min.js"></script>
+    <script>
+        marked.setOptions({
+            highlight: function(code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    return hljs.highlight(code, { language: lang }).value;
+                }
+                return hljs.highlightAuto(code).value;
+            },
+            gfm: true,
+            breaks: false
+        });
+
+        const params = new URLSearchParams(window.location.search);
+        const page = params.get("page") || "getting-started";
+
+        fetch(`pages/${page}.md`)
+            .then(res => {
+                if (!res.ok) throw new Error(`Page not found: ${page}`);
+                return res.text();
+            })
+            .then(md => {
+                document.getElementById("content").innerHTML = marked.parse(md);
+                // Re-highlight any blocks missed by marked
+                document.querySelectorAll("pre code").forEach(block => {
+                    hljs.highlightElement(block);
+                });
+            })
+            .catch(err => {
+                document.getElementById("content").innerHTML =
+                    `<h1>Page Not Found</h1><p>The page <code>${page}</code> could not be loaded.</p>`;
+            });
+    </script>
+</body>
+</html>
